@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import callouts, filters, languages
+from . import callouts, filters, languages, slang
 from .config import Settings
 
 log = logging.getLogger(__name__)
@@ -142,6 +142,11 @@ class Translator:
         log.debug("Vocabulary prompt (%d tokens): %s", self._count_tokens(text), text)
         return text
 
+    # Clips this short in Russian/Ukrainian are transcribed first, because
+    # swearing and short shouts come out right in the transcript and wrong in
+    # Whisper's translation ("нет, сука, блять" -> "Mexico blyat").
+    SHORT_S = 3.0
+
     RECENT_S = 180.0
     RECENT_BONUS = 0.1
 
@@ -216,7 +221,7 @@ class Translator:
                 or filters.is_hallucination(out.text, avg_logprob=out.avg_logprob,
                                             no_speech_prob=out.no_speech_prob, hint=hint)):
             return language, ""
-        return language, out.text
+        return language, slang.fix_translation(out.text, language)
 
     def process(self, audio: np.ndarray, settings: Settings, game_map: str | None = None) -> Caption | Skipped:
         """game_map: the map being played as the game names it ("de_mirage"),
@@ -246,6 +251,19 @@ class Translator:
                            duration_s=duration, latency_ms=(time.perf_counter() - t0) * 1000)
 
         def translate(language: str, confidence: float, original: str | None = None) -> Caption | Skipped:
+            if language in slang.LANGUAGES and duration <= self.SHORT_S:
+                if original is None:
+                    native = self._decode(audio, language, "transcribe", "")
+                    trusted = native.text and not filters.is_hallucination(
+                        native.text, avg_logprob=native.avg_logprob, no_speech_prob=native.no_speech_prob)
+                    # A lone "да" or "нет" is also what Whisper makes of noise.
+                    if trusted and len(native.text.split()) == 1:
+                        trusted = native.avg_logprob > -0.7 and native.no_speech_prob < 0.5
+                    original = native.text if trusted else ""
+                quick = slang.translate_short(original, language)
+                if quick:
+                    log.debug("Short phrase translated from the table")
+                    return caption(language, quick, original if settings.show_original else "", confidence)
             english = self._decode(audio, language, "translate", hint)
             if filters.looks_untranslated(english.text):
                 # Whisper sometimes answers in the spoken language; one retry with
@@ -254,6 +272,7 @@ class Translator:
                 english = self._decode(audio, language, "translate", hint, temperature=(0.3, 0.6))
                 if filters.looks_untranslated(english.text):
                     return skip("Whisper didn't translate it", language)
+            english.text = slang.fix_translation(english.text, language)
             problem = check(english, language)
             if problem:
                 return problem
@@ -283,7 +302,9 @@ class Translator:
         if language != "en":
             if language not in enabled:
                 return skip(f"{languages.display_name(language)} is switched off under Languages", language)
-            original = heard.text if heard is not None and settings.show_original else None
+            # The trial transcript, if there was one, saves a pass (it is only
+            # shown when original words are switched on).
+            original = heard.text if heard is not None else None
             result = translate(language, confidence, original=original)
             if isinstance(result, Caption):
                 self._remember(language)
@@ -292,7 +313,9 @@ class Translator:
         # English, possibly with words from another language mixed in
         # ("меня зовут means my name is"). Only worth a look when one of your
         # languages got some of the vote, or when English is captioned anyway.
-        if not settings.show_english and filters.enabled_share(all_probs, enabled) < 0.05:
+        recently_foreign = duration <= self.SHORT_S and bool(self.recent_languages() & enabled)
+        if (not settings.show_english and filters.enabled_share(all_probs, enabled) < 0.05
+                and not recently_foreign):
             return skip("English (captioning English is off)", "en")
         if heard is None:
             heard = self._decode(audio, "en", "transcribe", hint)
@@ -302,6 +325,15 @@ class Translator:
             if isinstance(mixed, Caption):
                 self._remember(foreign)
                 return mixed
+        else:
+            # "Mexico blyat": Russian swearing heard as English. Try it as Russian.
+            respoken = slang.latin_language(heard.text, enabled)
+            if respoken:
+                log.info("English with Russian swearing in it; trying it as %s", respoken)
+                again = translate(respoken, confidence)
+                if isinstance(again, Caption):
+                    self._remember(respoken)
+                    return again
         if not settings.show_english:
             return skip("English (captioning English is off)", "en")
         problem = check(heard, "en")

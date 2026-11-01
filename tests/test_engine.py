@@ -45,19 +45,22 @@ def test_russian_is_translated_with_original():
     assert cap is not None
     assert cap.language == "ru" and cap.text == "Two on B." and cap.original == "Двое на Б."
     tasks = [c[1] for c in t.model.calls]
-    assert tasks == ["translate", "transcribe"]
+    # A short Russian clip is transcribed first (for the swearing table), and
+    # that transcript is the original: two passes, as before.
+    assert tasks == ["transcribe", "translate"]
     # The English vocabulary hint is only used for the English output.
-    assert t.model.calls[0][2] and t.model.calls[1][2] is None
+    assert t.model.calls[0][2] is None and t.model.calls[1][2]
 
 
 def test_map_callouts_reach_whisper():
     t = make([("ru", 0.95)], {"translate": (" Two Palace.", -0.2, 0.01), "transcribe": (" Двое палас.", -0.2, 0.01)})
     t.process(AUDIO, Settings(vocabulary_hint="Artyom"), game_map="de_mirage")
-    prompt = t.model.calls[0][2]
+    prompt = [c[2] for c in t.model.calls if c[1] == "translate"][0]
     assert "Mirage" in prompt and "Palace" in prompt and prompt.endswith("Artyom.")
     t.model.calls.clear()
     t.process(AUDIO, Settings(), game_map=None)
-    assert "Palace" not in t.model.calls[0][2] and "AWP" in t.model.calls[0][2]
+    prompt = [c[2] for c in t.model.calls if c[1] == "translate"][0]
+    assert "Palace" not in prompt and "AWP" in prompt
 
 
 def test_english_is_skipped_by_default():
@@ -209,3 +212,34 @@ def test_preview_waits_or_skips():
     assert dutch.preview(AUDIO, Settings()) == ("", "")  # switched off
     noise = make([("ru", 0.9)], {"translate": ("Thanks for watching!", -0.3, 0.1)})
     assert noise.preview(AUDIO, Settings()) == ("ru", "")
+
+
+def test_russian_swearing_comes_from_the_table():
+    t = make([("ru", 0.9), ("en", 0.05)], {"transcribe": (" Нет, сука, блять!", -0.3, 0.05),
+                                           "translate": (" Mexico blyat", -0.6, 0.05)})
+    cap = t.process(np.zeros(16000, dtype=np.float32), Settings())
+    assert isinstance(cap, Caption) and cap.text == "No, fucking hell!" and cap.original == "Нет, сука, блять!"
+    assert [c[1] for c in t.model.calls] == ["transcribe"]  # Whisper's translation isn't needed
+
+
+def test_russian_swearing_heard_as_english_is_tried_as_russian():
+    t = make([("en", 0.85), ("ru", 0.12)], {
+        ("en", "transcribe"): ("Mexico blyat", -0.5, 0.05),
+        ("ru", "transcribe"): ("Нет, сука, блять", -0.4, 0.05),
+    })
+    cap = t.process(np.zeros(16000, dtype=np.float32), Settings())
+    assert isinstance(cap, Caption) and cap.language == "ru" and cap.text == "No, fucking hell!"
+
+
+def test_swearing_left_in_latin_letters_is_translated():
+    t = make([("ru", 0.95)], {"transcribe": (" Раш Б, сука блять, все вместе", -0.3, 0.02),
+                              "translate": (" Rush B, suka blyat, everyone together", -0.3, 0.02)})
+    cap = t.process(AUDIO, Settings())
+    assert cap.text == "Rush B, fucking hell, everyone together"
+
+
+def test_a_lone_word_needs_a_confident_transcript():
+    t = make([("ru", 0.9)], {"transcribe": (" Да.", -1.1, 0.4), "translate": (" Yes.", -0.3, 0.05)})
+    cap = t.process(np.zeros(8000, dtype=np.float32), Settings())
+    # Not from the table (could be noise), so Whisper's translation decides.
+    assert [c[1] for c in t.model.calls] == ["transcribe", "translate"] and cap.original == ""

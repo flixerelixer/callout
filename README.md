@@ -99,6 +99,16 @@ map only). If CS2 was open when the file was first added, restart it once.
 You can also pick the map by hand, which removes the file; uninstalling
 FragSubs removes it too.
 
+## Swearing and short shouts
+
+Whisper learned from clean subtitles, so a one-second "нет, сука, блять" can
+come out as "Mexico blyat". For short Russian and Ukrainian clips FragSubs
+reads the Russian transcript first: if it is only swearing and short shouts
+(сука, блять, нахуй, пиздец, давай, нет, ...), the English comes from a small
+table in `fragsubs/slang.py` ("No, fucking hell!"). Russian swearing that
+Whisper leaves in Latin letters ("Rush B, suka blyat") is translated, and an
+"English" sentence with such words in it is tried again as Russian.
+
 ## Live captions
 
 While a teammate is still talking, FragSubs translates what it has heard so
