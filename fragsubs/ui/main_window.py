@@ -377,18 +377,30 @@ class MainWindow(QMainWindow):
         self.device_combo.currentIndexChanged.connect(
             lambda: self._set("output_device", self.device_combo.currentData(), restart=True))
         form.addWidget(self.device_combo, 1, 1)
-        self._slider(form, 2, "Speech detection", "vad_threshold", 20, 80, 100,
-                     lambda v: "very sensitive" if v < 35 else "sensitive" if v < 48
-                     else "balanced" if v < 60 else "strict", restart=True)
-        self._slider(form, 3, "Pause that ends a sentence", "end_silence_ms", 250, 1500, 1,
-                     lambda v: f"{v} ms", restart=True)
         form.setColumnStretch(1, 1)
         lay.addLayout(form)
+        lay.addWidget(self._note(
+            "FragSubs only reads the sound the game plays and never touches the game's memory, so it is "
+            "safe with VAC."))
+
+        self._section(lay, "Picking up speech")
+        speech = QGridLayout()
+        speech.setHorizontalSpacing(16)
+        speech.setVerticalSpacing(10)
+        self._slider(speech, 0, "Speech detection", "vad_threshold", 20, 80, 100,
+                     lambda v: "very sensitive" if v < 35 else "sensitive" if v < 48
+                     else "balanced" if v < 60 else "strict", restart=True)
+        self._slider(speech, 1, "Pause that ends a sentence", "end_silence_ms", 250, 1500, 1,
+                     lambda v: f"{v} ms", restart=True)
+        speech.setColumnStretch(1, 1)
+        lay.addLayout(speech)
+        lay.addWidget(self._note(
+            "Quiet teammates or short callouts missed? Move <b>Speech detection</b> towards sensitive. Game "
+            "sounds taken for talking? Towards strict.<br>Sentences cut in half? Raise the <b>pause</b> "
+            "(for example to 700 ms). Subtitles too slow, or several sentences in one? Lower it (300 to "
+            "400 ms)."))
         self._check(lay, "Ignore gunshots and explosions (they can't stretch a sentence, and Whisper "
                          "hears them turned down)", "filter_bangs", restart=True)
-        lay.addWidget(self._note(
-            "FragSubs only reads the sound the game plays. It does not touch the game's memory or "
-            "files, so it is safe with VAC."))
 
         self._section(lay, "Speech model")
         self.model_combo = QComboBox()

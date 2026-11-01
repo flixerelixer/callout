@@ -25,6 +25,7 @@
       </a>
       <nav aria-label="Main">
         <a href="#how">How it works</a>
+        <a href="#maps">Maps</a>
         <a href="#languages">Languages</a>
         <a href="#faq">FAQ</a>
         <a class="nav-github" href="https://github.com/flixerelixer/callout">GitHub</a>
@@ -47,21 +48,22 @@
           <ul class="ticks">
             <li>32 languages</li>
             <li>Runs on your own PC</li>
-            <li>Knows every map's callouts</li>
+            <li>Knows the map's callouts</li>
           </ul>
         </div>
 
         <figure class="demo">
-          <div class="scene" role="img" aria-label="Demo: teammates talk in other languages and FragSubs shows English subtitles at the bottom of the game screen">
+          <div class="scene" data-map="de_mirage" role="img" aria-label="Demo: teammates talk in other languages and FragSubs shows English subtitles at the bottom of the game screen, using the callouts of the map being played">
             <div class="scene-sky" aria-hidden="true"></div>
             <div class="scene-ground" aria-hidden="true"></div>
             <div class="crosshair" aria-hidden="true"></div>
             <div class="voice" aria-hidden="true">
               <span class="voice-dot"></span><span><span id="voice-name">Teammate</span> is talking</span>
             </div>
+            <div class="map-badge" aria-hidden="true"><span class="map-badge-label">Map</span><span id="map-name">Mirage</span></div>
             <ol class="captions" id="captions" aria-hidden="true"></ol>
           </div>
-          <figcaption class="scene-note">Demo: the subtitles at the bottom are FragSubs, drawn over the game.</figcaption>
+          <figcaption class="scene-note">Demo: the subtitles at the bottom are FragSubs. When the map changes, so do the callouts it listens for.</figcaption>
         </figure>
       </div>
     </section>
@@ -101,6 +103,31 @@
             <p>The English appears over the game, at the bottom of your screen. Mouse clicks go straight through it, and it fades away after a few seconds.</p>
           </li>
         </ol>
+      </div>
+    </section>
+
+    <section class="maps" id="maps">
+      <div class="wrap maps-grid">
+        <div>
+          <p class="eyebrow">Maps</p>
+          <h2>It knows which map you're on.</h2>
+          <p class="section-text">FragSubs sees the map through Valve's official Game State Integration and gives the speech model that map's callouts. So Palace, Banana and Heaven come out right, not as words that only sound alike.</p>
+          <p class="section-text">Pick a map to see what FragSubs listens for there. In the app you can add your teammates' names and your team's own callouts too.</p>
+        </div>
+        <div class="map-picker">
+          <div class="map-tabs" role="tablist" aria-label="Maps" id="map-tabs"></div>
+          <div class="map-panel" id="map-panel" role="tabpanel">
+            <div class="map-scene" id="map-scene" data-map="de_mirage" aria-hidden="true">
+              <div class="cap" id="map-cap">
+                <span class="cap-tag">RU</span>
+                <span class="cap-text">Two in Palace, one in Apps.</span>
+                <span class="cap-orig">Dvoe na palase, odin v appsakh.</span>
+              </div>
+            </div>
+            <p class="fine map-count" id="map-count">Callouts for Ancient, Anubis, Cache, Dust&nbsp;2, Inferno, Mirage, Nuke, Overpass and Vertigo.</p>
+            <ul class="chips map-chips" id="map-chips" aria-label="Callouts on this map"></ul>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -199,6 +226,19 @@
           <p>Clear sentences come out well. Short callouts in the middle of a gunfight, bad microphones and heavy slang are harder. FragSubs skips what it can't make out instead of guessing.</p>
         </details>
         <details>
+          <summary>It misses words or cuts sentences in half. What can I change?</summary>
+          <p>In FragSubs, open <strong>Audio &amp; model</strong> and look under <strong>Picking up speech</strong>:</p>
+          <ul>
+            <li><strong>Speech detection</strong>: quiet teammates or short callouts get missed? Move it towards <em>sensitive</em>. Game sounds taken for talking? Move it towards <em>strict</em>.</li>
+            <li><strong>Pause that ends a sentence</strong>: teammates get cut off halfway through a sentence? Raise it, for example to 700&nbsp;ms. Subtitles too slow, or several sentences in one? Lower it to 300 or 400&nbsp;ms. It starts at 450&nbsp;ms.</li>
+          </ul>
+          <p>To see what was heard but not shown, and why, tick <strong>Also list speech that was heard but skipped</strong> on the <strong>Live</strong> page.</p>
+        </details>
+        <details>
+          <summary>Map callouts come out wrong. What can I do?</summary>
+          <p>Check the <strong>Maps &amp; callouts</strong> page in FragSubs. It should say which map you're playing. If it says it's waiting for the game, restart Counter-Strike&nbsp;2 once, or pick the map by hand. Callouts your team uses that aren't on the list, and your teammates' names, go in <strong>Extra words</strong>.</p>
+        </details>
+        <details>
           <summary>Can it tell who is talking?</summary>
           <p>Not in in-game voice chat. The game mixes all teammates into one sound before it reaches Windows.</p>
         </details>
@@ -227,6 +267,7 @@
     </div>
   </footer>
 
+  <script src="maps.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
