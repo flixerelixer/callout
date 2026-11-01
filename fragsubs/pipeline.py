@@ -23,6 +23,11 @@ log = logging.getLogger(__name__)
 
 SAMPLE_RATE = 16000
 MAX_QUEUED_SEGMENTS = 3
+# Live preview: translate the sentence in progress once it has this much
+# audio, then again every PREVIEW_EVERY_S (slower if the GPU needs longer).
+PREVIEW_MIN_S = 0.8
+PREVIEW_EVERY_S = 0.5
+PREVIEW_MAX_EVERY_S = 2.0
 
 
 @dataclass
@@ -35,6 +40,9 @@ class Callbacks:
     progress: Callable[[str, int, int], None]  # label, done, total (downloads)
     error: Callable[[str], None]
     ready: Callable[[], None]  # model loaded, captions will flow
+    # A sentence with a live preview on screen ended without a caption
+    # (too short, or dropped to keep up): take the preview away.
+    retract: Callable[[int], None] = lambda _segment_id: None
 
 
 class Pipeline:
@@ -46,8 +54,15 @@ class Pipeline:
         # Called before each sentence: the map being played, for its callouts.
         self.game_map = game_map
         self._stop = threading.Event()
-        self._segments: queue.Queue[np.ndarray] = queue.Queue()
+        self._segments: queue.Queue[tuple[int, np.ndarray]] = queue.Queue()
         self._threads: list[threading.Thread] = []
+        # Live preview state, shared by both threads under _lock.
+        self._lock = threading.Lock()
+        self._preview: tuple[int, np.ndarray] | None = None  # latest sentence-so-far
+        self._closed_upto = 0  # sentences up to this id have ended
+        self._previewed: set[int] = set()  # ids with a preview on screen
+        self._preview_lang: dict[int, str] = {}
+        self._preview_every = PREVIEW_EVERY_S
 
     # ------------------------------------------------------------------
     def start(self) -> None:
@@ -64,6 +79,11 @@ class Pipeline:
         for t in self._threads:
             t.join(timeout=timeout)
         self._threads = []
+
+    @property
+    def previews_on(self) -> bool:
+        # Too slow on a CPU: the final captions would fall behind.
+        return self.settings.live_preview and self.device == "cuda"
 
     @property
     def running(self) -> bool:
@@ -94,6 +114,7 @@ class Pipeline:
 
         last_data = time.monotonic()
         last_level = 0.0
+        last_preview = 0.0
         recent: list[np.ndarray] = []
         try:
             while not self._stop.is_set():
@@ -102,21 +123,37 @@ class Pipeline:
                 if chunk is not None and chunk.size:
                     last_data = now
                     recent.append(chunk)
-                    finished = seg.feed(chunk)
+                    finished = seg.feed_ids(chunk)
                 elif now - last_data > 0.2:
                     # Loopback delivers nothing while everything is silent; feed
                     # silence so a sentence still ends when the speaker stops.
                     gap = min(now - last_data, 1.0)
-                    finished = seg.feed(np.zeros(int(SAMPLE_RATE * gap), dtype=np.float32))
+                    finished = seg.feed_ids(np.zeros(int(SAMPLE_RATE * gap), dtype=np.float32))
                     last_data = now
                 else:
                     finished = []
-                for segment in finished:
-                    self._enqueue(segment)
-                for seconds in seg.short_drops:
-                    log.info("Skipped %.1fs of speech: too short", seconds)
-                    self.cb.skipped(Skipped(f"too short ({seconds:.1f} s of speech)", seconds))
+                for segment_id, segment in finished:
+                    self._close(segment_id)
+                    self._enqueue(segment_id, segment)
+                for segment_id, seconds in seg.dropped:
+                    had_preview = self._close(segment_id)
+                    if seconds >= 0.16:
+                        log.info("Skipped %.1fs of speech: too short", seconds)
+                        self.cb.skipped(Skipped(f"too short ({seconds:.1f} s of speech)", seconds,
+                                                segment_id=segment_id))
+                    elif had_preview:
+                        self.cb.retract(segment_id)
+                seg.dropped.clear()
                 seg.short_drops.clear()
+                # Live preview of the sentence still going on, when the speech
+                # thread has nothing more important to do.
+                if (self.previews_on and seg.current_seconds >= PREVIEW_MIN_S
+                        and now - last_preview >= self._preview_every and self._segments.empty()):
+                    current = seg.current()
+                    if current is not None:
+                        with self._lock:
+                            self._preview = current
+                        last_preview = now
                 if now - last_level >= 0.1:
                     last_level = now
                     audio = np.concatenate(recent) if recent else np.zeros(1, dtype=np.float32)
@@ -130,15 +167,63 @@ class Pipeline:
         finally:
             cap.close()
 
-    def _enqueue(self, segment: np.ndarray) -> None:
+    def _close(self, segment_id: int) -> bool:
+        """A sentence ended: no more previews of it. True if one is on screen."""
+        with self._lock:
+            self._closed_upto = max(self._closed_upto, segment_id)
+            if self._preview is not None and self._preview[0] <= segment_id:
+                self._preview = None
+            for old in [k for k in self._preview_lang if k <= segment_id]:
+                del self._preview_lang[old]
+            had = segment_id in self._previewed
+            self._previewed.discard(segment_id)
+            return had
+
+    def _enqueue(self, segment_id: int, segment: np.ndarray) -> None:
         # Stay close to real time: if Whisper falls behind, drop the oldest.
         while self._segments.qsize() >= MAX_QUEUED_SEGMENTS:
             try:
-                self._segments.get_nowait()
+                dropped_id, _ = self._segments.get_nowait()
                 log.info("Dropped a queued sentence to keep up")
+                self.cb.retract(dropped_id)
             except queue.Empty:
                 break
-        self._segments.put(segment)
+        self._segments.put((segment_id, segment))
+
+    def _take_preview(self) -> tuple[int, np.ndarray] | None:
+        with self._lock:
+            job, self._preview = self._preview, None
+            if job is None or job[0] <= self._closed_upto:
+                return None
+            return job
+
+    def _run_preview(self, translator, segment_id: int, audio: np.ndarray) -> None:
+        with self._lock:
+            language = self._preview_lang.get(segment_id)
+        if language == "":
+            return  # this sentence isn't shown live
+        t0 = time.perf_counter()
+        try:
+            language, text = translator.preview(audio, self.settings, game_map=self.game_map(), language=language)
+        except Exception as exc:  # noqa: BLE001
+            log.debug("Preview failed: %s", exc)
+            return
+        took = time.perf_counter() - t0
+        # Keep previews to well under the GPU's time, so final captions never wait long.
+        self._preview_every = min(PREVIEW_MAX_EVERY_S, max(PREVIEW_EVERY_S, took * 2.0))
+        with self._lock:
+            if segment_id <= self._closed_upto:
+                return
+            if language is not None:
+                self._preview_lang[segment_id] = language
+            if not text:
+                return
+            self._previewed.add(segment_id)
+            # Emitted under the lock, so a sentence that ends right now can't
+            # miss that its preview needs taking away.
+            self.cb.caption(Caption(language or "", text, segment_id=segment_id, partial=True,
+                                    duration_s=len(audio) / SAMPLE_RATE, latency_ms=took * 1000))
+        log.debug("Preview of sentence %d (%.1fs) in %.0f ms", segment_id, len(audio) / SAMPLE_RATE, took * 1000)
 
     # ------------------------------------------------------------------
     def _run_inference(self) -> None:
@@ -176,15 +261,21 @@ class Pipeline:
         self.cb.ready()
         while not self._stop.is_set():
             try:
-                segment = self._segments.get(timeout=0.2)
+                segment_id, segment = self._segments.get(timeout=0.05)
             except queue.Empty:
+                job = self._take_preview() if self.previews_on else None
+                if job is not None:
+                    self._run_preview(translator, *job)
                 continue
             try:
                 caption = translator.process(segment, s, game_map=self.game_map())
             except Exception as exc:  # noqa: BLE001
                 log.exception("Translation failed")
                 self.cb.error(f"Translation failed: {exc}")
+                self.cb.retract(segment_id)
                 continue
+            if caption is not None:
+                caption.segment_id = segment_id
             if isinstance(caption, Skipped):
                 self.cb.skipped(caption)
             elif caption is not None:

@@ -56,6 +56,9 @@ class Settings:
 
     # --- overlay ---------------------------------------------------------
     overlay_enabled: bool = True
+    # Show a sentence while it is still being spoken, growing as it goes
+    # (needs an NVIDIA GPU); the full translation replaces it at the end.
+    live_preview: bool = True
     overlay_x: int = -1  # -1 = not placed yet; start at the default spot
     overlay_y: int = -1
     overlay_width: int = 720

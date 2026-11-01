@@ -56,6 +56,7 @@ class Bridge(QObject):
     ready = Signal()
     task_done = Signal(str, object)
     map_changed = Signal(str)
+    retract = Signal(int)
 
 
 def _gb(n: int) -> str:
@@ -93,6 +94,7 @@ class MainWindow(QMainWindow):
         self.bridge.ready.connect(self._on_ready)
         self.bridge.task_done.connect(self._on_task_done)
         self.bridge.map_changed.connect(lambda _name: self._refresh_map_status())
+        self.bridge.retract.connect(self.overlay.remove_segment)
 
         # Map detection (CS2 Game State Integration). File work runs one job
         # at a time, off the UI thread.
@@ -310,6 +312,11 @@ class MainWindow(QMainWindow):
         )
         self._check(lay, "Show captions over the game", "overlay_enabled",
                     after=lambda: None if self.settings.overlay_enabled else self.overlay.clear())
+        self._check(lay, "Show sentences while they're still being spoken, growing as the teammate talks",
+                    "live_preview")
+        lay.addWidget(self._note(
+            "The line ends in “…” while they talk. When they stop, the full, more careful translation "
+            "replaces it. Needs an NVIDIA GPU; on the CPU captions appear when the sentence is finished."))
         lay.addWidget(self._note(
             "Set Counter-Strike 2 to <b>Fullscreen Windowed</b> (Settings, Video, Display Mode). "
             "In plain Fullscreen the game hides every other window, including this overlay."
@@ -811,6 +818,7 @@ class MainWindow(QMainWindow):
             progress=self.bridge.progress.emit,
             error=self.bridge.error.emit,
             ready=self.bridge.ready.emit,
+            retract=self.bridge.retract.emit,
         )
         self._pipeline = Pipeline(self.settings, device, cb, game_map=self.current_map)
         self._pipeline.start()
@@ -892,10 +900,12 @@ class MainWindow(QMainWindow):
             self.pill.set("speech" if speech else "live", "Someone is talking" if speech else "Listening")
 
     def _on_caption(self, caption: Caption) -> None:
-        self.log.add(caption, self.settings.original_script)
+        if not caption.partial:  # the Live list only gets finished sentences
+            self.log.add(caption, self.settings.original_script)
         self.overlay.add_caption(caption)
 
     def _on_skipped(self, item: Skipped) -> None:
+        self.overlay.remove_segment(item.segment_id)
         if self.settings.show_skipped:
             self.log.add(item)
 

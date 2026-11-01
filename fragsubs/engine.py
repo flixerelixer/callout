@@ -27,6 +27,10 @@ class Caption:
     duration_s: float = 0.0
     latency_ms: float = 0.0
     created: float = field(default_factory=time.time)
+    # Which stretch of speech this belongs to. A live preview (partial=True)
+    # is replaced by later previews and by the final caption with the same id.
+    segment_id: int = 0
+    partial: bool = False
 
     def original_lines(self, mode: str) -> list[str]:
         """Original words to show: mode is "native", "latin" or "both"."""
@@ -48,6 +52,7 @@ class Skipped:
     duration_s: float = 0.0
     language: str = ""
     created: float = field(default_factory=time.time)
+    segment_id: int = 0  # its live preview, if any, goes away
 
 
 @dataclass
@@ -179,6 +184,39 @@ class Translator:
         if score < -1.0:
             return "", out, candidates
         return lang, out, candidates
+
+    def preview(self, audio: np.ndarray, settings: Settings, game_map: str | None = None,
+                language: str | None = None) -> tuple[str | None, str]:
+        """A quick translation of speech that is still going on, for the live
+        preview. One fast pass (greedy, no original text); the full pass runs
+        when the sentence ends and replaces it.
+
+        language: what an earlier preview of this sentence settled on, so it
+        is only detected once. Returns (language, text): language None means
+        not sure yet (try again with more audio), "" means this sentence won't
+        be shown live (English with English captions off, a language that is
+        switched off). text is "" when there is nothing worth showing yet.
+        """
+        if language is None:
+            _lang, _p, all_probs = self.model.detect_language(audio)
+            chosen, _conf, _guess = filters.choose_language(
+                all_probs, settings.enabled_languages(), min_confidence=settings.min_language_confidence)
+            if chosen is None:
+                return None, ""
+            if chosen == "en":
+                language = "en" if settings.show_english else ""
+            else:
+                language = chosen if chosen in settings.enabled_languages() else ""
+        if not language:
+            return language, ""
+        hint = self.prompt_for(settings, game_map)
+        task = "transcribe" if language == "en" else "translate"
+        out = self._decode(audio, language, task, hint, temperature=(0.0,), beam_size=1)
+        if (not out.text or out.avg_logprob < -1.2 or filters.looks_untranslated(out.text)
+                or filters.is_hallucination(out.text, avg_logprob=out.avg_logprob,
+                                            no_speech_prob=out.no_speech_prob, hint=hint)):
+            return language, ""
+        return language, out.text
 
     def process(self, audio: np.ndarray, settings: Settings, game_map: str | None = None) -> Caption | Skipped:
         """game_map: the map being played as the game names it ("de_mirage"),

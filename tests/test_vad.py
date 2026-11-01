@@ -189,3 +189,37 @@ def test_gunfire_after_speech_does_not_keep_the_sentence_open():
     # long-sentence rule kicks in); with it, it ends like normal speech.
     assert sent_off - speech_end > 1.0
     assert sent_on - speech_end < 0.6 and length_on < 1.6
+
+
+def test_segments_are_numbered_for_live_previews():
+    mask = ([0.0] * 10 + [0.9] * frames_for(1.5) + [0.0] * frames_for(1)) * 2
+    seg = Segmenter(stub_from_mask(mask), SegmenterConfig())
+    audio = np.zeros(len(mask) * FRAME, dtype=np.float32)
+    finished, previews = [], []
+    for i in range(0, len(audio), FRAME * 4):
+        finished += seg.feed_ids(audio[i:i + FRAME * 4])
+        cur = seg.current()
+        if cur is not None:
+            previews.append((cur[0], len(cur[1]) / SAMPLE_RATE, seg.current_seconds))
+    assert [sid for sid, _ in finished] == [1, 2]
+    # While someone talks, the sentence so far is there, growing, with its id.
+    first = [p for p in previews if p[0] == 1]
+    assert first and first[-1][1] > first[0][1] and all(abs(a - b) < 1e-9 for _, a, b in first)
+    assert seg.current() is None and seg.current_seconds == 0.0
+
+
+def test_dropped_segments_are_listed_with_their_id():
+    mask = [0.0] * 20 + [0.9] * 3 + [0.0] * 40 + [0.9] * 5 + [0.0] * 40
+    out, seg = run(mask)
+    assert out == []
+    assert [sid for sid, _ in seg.dropped] == [1, 2]  # a click, then a too-short word
+
+
+def test_nonstop_talk_carries_over_into_a_new_id():
+    cfg = SegmenterConfig(max_segment_s=2.0)
+    mask = [0.0] * 10 + [0.9] * frames_for(3.5) + [0.0] * frames_for(1)
+    seg = Segmenter(stub_from_mask(mask), cfg)
+    audio = np.zeros(len(mask) * FRAME, dtype=np.float32)
+    ids = [sid for sid, _ in seg.feed_ids(audio)]
+    # Each cut piece is its own sentence with its own number.
+    assert len(ids) >= 2 and ids == list(range(1, len(ids) + 1))

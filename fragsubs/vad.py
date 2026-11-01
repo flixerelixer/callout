@@ -164,9 +164,29 @@ class Segmenter:
         # Seconds of speech in segments dropped for being too short, so the
         # app can show them as skipped. The caller empties this list.
         self.short_drops: list[float] = []
+        # Every stretch of speech gets a number, so a live preview of it can be
+        # matched with its final caption. Dropped ones are listed here as
+        # (id, seconds of speech); the caller empties this list.
+        self.segment_id = 0
+        self.dropped: list[tuple[int, float]] = []
+
+    @property
+    def current_seconds(self) -> float:
+        """Length of the sentence in progress (0 when nobody is talking)."""
+        return len(self._frames) * FRAME / SAMPLE_RATE if self.in_speech else 0.0
+
+    def current(self) -> tuple[int, np.ndarray] | None:
+        """The sentence still in progress, for a live preview: (id, audio)."""
+        if not self.in_speech or not self._frames:
+            return None
+        return self.segment_id, np.concatenate(self._frames)
 
     def feed(self, audio: np.ndarray) -> list[np.ndarray]:
         """Add audio; return any segments that just finished."""
+        return [segment for _id, segment in self.feed_ids(audio)]
+
+    def feed_ids(self, audio: np.ndarray) -> list[tuple[int, np.ndarray]]:
+        """Like feed, with each finished segment's id."""
         if audio.size:
             self._pending = np.concatenate([self._pending, audio.astype(np.float32, copy=False)])
         n = len(self._pending) // FRAME
@@ -191,18 +211,19 @@ class Segmenter:
                 if mute.any():
                     frames = frames.copy()
                     frames[mute] *= 0.1
-        done: list[np.ndarray] = []
+        done: list[tuple[int, np.ndarray]] = []
         for frame, prob in zip(frames, probs):
             self.last_prob = float(prob)
-            segment = self._step(frame, float(prob))
-            if segment is not None:
-                done.append(segment)
+            finished = self._step(frame, float(prob))
+            if finished is not None:
+                done.append(finished)
         return done
 
-    def _step(self, frame: np.ndarray, prob: float) -> np.ndarray | None:
+    def _step(self, frame: np.ndarray, prob: float) -> tuple[int, np.ndarray] | None:
         if not self.in_speech:
             if prob >= self.cfg.threshold:
                 self.in_speech = True
+                self.segment_id += 1
                 self._frames = [f for f, _ in self._pre_roll] + [frame]
                 self._probs = [p for _, p in self._pre_roll] + [prob]
                 self._pre_roll.clear()
@@ -221,19 +242,23 @@ class Segmenter:
 
         if self._silence_run >= (self._soft_silence if long else self._end_silence):
             keep = len(self._frames) - self._silence_run + self._tail_pad
-            return self._finish(keep)
+            return self._finished(self._finish(keep))
         if len(self._frames) >= self._max_frames:
             # Nonstop talk: cut at the quietest moment of the last second and
             # carry the rest over as the start of the next segment.
             window = self._probs[-self._cut_window:]
             cut = len(self._probs) - len(window) + int(np.argmin(window)) + 1
             rest_frames, rest_probs = self._frames[cut:], self._probs[cut:]
-            segment = self._finish(cut)
+            finished = self._finished(self._finish(cut))
             if rest_frames:
                 self.in_speech = True
+                self.segment_id += 1
                 self._frames, self._probs = rest_frames, rest_probs
-            return segment
+            return finished
         return None
+
+    def _finished(self, segment: np.ndarray | None) -> tuple[int, np.ndarray] | None:
+        return None if segment is None else (self.segment_id, segment)
 
     def _finish(self, keep_frames: int) -> np.ndarray | None:
         keep = max(1, min(keep_frames, len(self._frames)))
@@ -244,8 +269,10 @@ class Segmenter:
         self._silence_run = 0
         self.in_speech = False
         if speech_frames < self._min_speech:
+            seconds = speech_frames * FRAME / SAMPLE_RATE
             if speech_frames >= 5:  # under 0.16 s it's a click, not a word
-                self.short_drops.append(speech_frames * FRAME / SAMPLE_RATE)
+                self.short_drops.append(seconds)
+            self.dropped.append((self.segment_id, seconds))
             return None
         return np.concatenate(frames)
 

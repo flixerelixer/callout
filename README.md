@@ -99,6 +99,17 @@ map only). If CS2 was open when the file was first added, restart it once.
 You can also pick the map by hand, which removes the file; uninstalling
 FragSubs removes it too.
 
+## Live captions
+
+While a teammate is still talking, FragSubs translates what it has heard so
+far every half second or so (one quick greedy pass) and shows it as a line
+ending in "…" that grows as they speak. When they stop, the full pass (beam
+search, the original words, all the checks) replaces that line. Previews only
+run when the speech model has nothing else waiting, so they never hold up a
+finished sentence; if a preview turns out to be noise, it is taken away again.
+Switch it off under **Overlay → Show sentences while they're still being
+spoken**. It needs an NVIDIA GPU.
+
 ## Reading the original words
 
 Under each translation FragSubs can show what was actually said. Under
@@ -121,7 +132,10 @@ Hindi. Japanese kana become romaji; kanji stay as they are.
 
 - In-game voice chat is one mixed sound, so FragSubs can't tell which teammate
   said what.
-- Translations appear about a second after someone stops talking.
+- With an NVIDIA GPU the first words show up while someone is still talking
+  and the line grows as they go; the careful final translation replaces it
+  about half a second after they stop. On the CPU, captions only appear once
+  the sentence is finished.
 - Loud gunfights, bad microphones and heavy slang lower accuracy.
 
 ## Troubleshooting

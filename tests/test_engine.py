@@ -186,3 +186,26 @@ def test_original_lines_modes():
     plain = Caption("pl", "Save it", "Sejwuj")  # already Latin: nothing extra
     assert plain.original_lines("both") == ["Sejwuj"] and plain.original_lines("latin") == ["Sejwuj"]
     assert Caption("ru", "Hi").original_lines("both") == []
+
+
+def test_preview_translates_quickly_with_the_map():
+    t = make([("ru", 0.95)], {"translate": (" Two in Palace", -0.3, 0.02)})
+    lang, text = t.preview(AUDIO, Settings(), game_map="de_mirage")
+    assert (lang, text) == ("ru", "Two in Palace")
+    (language, task, prompt), = t.model.calls
+    assert task == "translate" and "Palace" in prompt
+    # Next time the language is known: no detection, still one pass.
+    t.model.calls.clear()
+    assert t.preview(AUDIO, Settings(), language="ru")[1] == "Two in Palace"
+
+
+def test_preview_waits_or_skips():
+    unsure = make([("no", 0.38), ("en", 0.32), ("ru", 0.22)], {"translate": ("x", -0.1, 0.0)})
+    assert unsure.preview(AUDIO, Settings()) == (None, "")  # not sure yet: try with more audio
+    english = make([("en", 0.97)], {"transcribe": ("Rotate B", -0.1, 0.0)})
+    assert english.preview(AUDIO, Settings()) == ("", "")  # English captions are off
+    assert english.preview(AUDIO, Settings(show_english=True)) == ("en", "Rotate B")
+    dutch = make([("nl", 0.9)], {"translate": ("Hello", -0.1, 0.0)})
+    assert dutch.preview(AUDIO, Settings()) == ("", "")  # switched off
+    noise = make([("ru", 0.9)], {"translate": ("Thanks for watching!", -0.3, 0.1)})
+    assert noise.preview(AUDIO, Settings()) == ("ru", "")

@@ -154,6 +154,7 @@ nav a.button-sm:hover { color: #0f1420; }
   animation: cap-in 260ms ease-out both;
 }
 .cap.out { animation: cap-out 500ms ease-in both; }
+.cap.partial .cap-text { color: #c9ced7; }
 .cap-tag { font: 700 13px/1.75 var(--hud); color: var(--gold); }
 .cap-text { font: 600 clamp(15px, 1.7vw, 20px)/1.25 var(--hud); color: var(--text); }
 .cap-orig { grid-column: 2; font-size: clamp(12px, 1.2vw, 14px); color: #b9c0cc; line-height: 1.35; }

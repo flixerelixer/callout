@@ -115,15 +115,36 @@ class Overlay(QWidget):
 
     # ------------------------------------------------------------------ captions
     def add_caption(self, caption: Caption) -> None:
+        """Show a caption. One with the segment_id of a line already on screen
+        (a live preview of the same sentence) replaces that line, so the
+        sentence grows in place and the final translation takes its spot."""
         if not self.settings.overlay_enabled:
             return
-        self._items.append(_Shown(caption, time.monotonic() + self.settings.display_seconds))
-        self._items = self._items[-max(1, self.settings.max_lines):]
+        expires = time.monotonic() + self.settings.display_seconds
+        for item in self._items:
+            if caption.segment_id and item.caption.segment_id == caption.segment_id:
+                item.caption = caption
+                item.expires = expires
+                break
+        else:
+            self._items.append(_Shown(caption, expires))
+            self._items = self._items[-max(1, self.settings.max_lines):]
         if not self.isVisible():
             self.show()
         self._raise_topmost()
         self._tick.start()
         self.update()
+
+    def remove_segment(self, segment_id: int) -> None:
+        """Take a live preview away (the sentence turned out to be noise)."""
+        if not segment_id:
+            return
+        before = len(self._items)
+        self._items = [i for i in self._items if i.caption.segment_id != segment_id]
+        if len(self._items) != before:
+            if not self._items and not self._edit:
+                self.hide()
+            self.update()
 
     def clear(self) -> None:
         self._items.clear()
@@ -224,7 +245,9 @@ class Overlay(QWidget):
             tag_w = fm_tag.horizontalAdvance(tag) + 10 if tag else 0
             text_w = max_text_w - tag_w
             flags = int(Qt.TextFlag.TextWordWrap)
-            main_br = fm_main.boundingRect(QRect(0, 0, text_w, 10000), flags, c.text)
+            # A sentence still being spoken ends in "…" and is a little dimmer.
+            text = c.text + " …" if c.partial else c.text
+            main_br = fm_main.boundingRect(QRect(0, 0, text_w, 10000), flags, text)
             sub_br = QRect()
             sub_text = "\n".join(c.original_lines(s.original_script)) if s.show_original else ""
             if sub_text:
@@ -261,7 +284,7 @@ class Overlay(QWidget):
                 p.drawText(tag_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, tag)
                 tx += tag_w
             self._shadow_text(p, main_font, QRect(int(tx), int(ty), text_w, main_br.height()),
-                              c.text, QColor(theme.TEXT), alpha)
+                              text, QColor("#C9CED7" if c.partial else theme.TEXT), alpha)
             if sub_br.height():
                 muted = QColor("#B4BBC7")
                 self._shadow_text(p, sub_font, QRect(int(tx), int(ty + main_br.height() + 2), text_w, sub_br.height()),

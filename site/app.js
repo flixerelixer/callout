@@ -75,19 +75,40 @@
       let timer = null;
 
       const speak = (line) => {
-        // Someone talks for a moment (like the game's voice indicator)...
+        // Someone talks (like the game's voice indicator), and the English
+        // grows on screen while they do, ending in "…"...
         voiceName.textContent = line.who;
         voice.classList.add("on");
+        const words = line.text.split(" ");
         const talk = 900 + line.text.length * 28;
-        setTimeout(() => {
-          voice.classList.remove("on");
-          // ...and the subtitle appears shortly after they stop.
-          setTimeout(() => {
-            const li = caption(line);
+        const li = caption({ lang: line.lang, text: "" });
+        li.classList.add("partial");
+        const text = li.querySelector(".cap-text");
+        let shown = 0;
+        const grow = () => {
+          if (!li.isConnected && shown > 0) return;
+          // About every half second, like the app's live preview.
+          shown = Math.min(words.length - 1, shown + Math.max(1, Math.round(words.length / (talk / 520))));
+          text.textContent = `${words.slice(0, shown).join(" ")} …`;
+          if (!li.isConnected) {
             list.append(li);
             const live = list.querySelectorAll(".cap:not(.out)");
             if (live.length > MAX_ON_SCREEN) remove(live[0]);
-            setTimeout(() => remove(li), ON_SCREEN_MS);
+          }
+        };
+        const growing = [];
+        for (let t = 700; t < talk; t += 520) growing.push(setTimeout(grow, t));
+        setTimeout(() => {
+          voice.classList.remove("on");
+          growing.forEach(clearTimeout);
+          // ...and shortly after they stop, the final translation takes over.
+          setTimeout(() => {
+            const final = caption(line);
+            if (li.isConnected) li.replaceWith(final);
+            else list.append(final);
+            const live = list.querySelectorAll(".cap:not(.out)");
+            if (live.length > MAX_ON_SCREEN) remove(live[0]);
+            setTimeout(() => remove(final), ON_SCREEN_MS);
             timer = setTimeout(step, 1300);
           }, 450);
         }, talk);
