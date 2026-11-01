@@ -367,6 +367,8 @@ class MainWindow(QMainWindow):
                      lambda v: f"{v} ms", restart=True)
         form.setColumnStretch(1, 1)
         lay.addLayout(form)
+        self._check(lay, "Ignore gunshots and explosions (they can't stretch a sentence, and Whisper "
+                         "hears them turned down)", "filter_bangs", restart=True)
         lay.addWidget(self._note(
             "Callout only reads the sound the game plays. It does not touch the game's memory or "
             "files, so it is safe with VAC."))

@@ -32,6 +32,7 @@ class Settings:
     min_speech_ms: int = 200
     end_silence_ms: int = 450
     max_segment_s: float = 6.0
+    filter_bangs: bool = True  # gunshots/explosions count as quiet
 
     # --- recognition / translation --------------------------------------
     model: str = "large-v3"

@@ -127,3 +127,59 @@ def test_nonstop_talk_is_cut_at_the_quietest_moment():
     first = len(out[0]) // FRAME
     # The cut lands just after one of the dips, not in the middle of a word.
     assert first % 31 in (29, 30, 31, 0, 1)
+
+
+def _gunfire(seconds, rate=8, seed=0):
+    rng = np.random.default_rng(seed)
+    x = np.zeros(int(seconds * SAMPLE_RATE), np.float32)
+    t = np.arange(4000)
+    for k in range(int(seconds * rate)):
+        s = int(k * SAMPLE_RATE / rate)
+        burst = rng.normal(0, 1, 4000) * np.exp(-t / 500)
+        x[s:s + 4000] += burst[: len(x[s:s + 4000])].astype(np.float32)
+    return 0.9 * x / np.abs(x).max()
+
+
+def _voice(seconds):
+    """A pitched, voice-like sound (harmonics of 150 Hz with a 4 Hz wobble)."""
+    t = np.arange(int(seconds * SAMPLE_RATE)) / SAMPLE_RATE
+    x = sum(np.sin(2 * np.pi * 150 * k * t) / k for k in range(1, 6)) * (1 + 0.3 * np.sin(2 * np.pi * 4 * t))
+    return (0.2 * x / np.abs(x).max()).astype(np.float32)
+
+
+def test_bang_filter_flags_gunfire_but_not_voice():
+    from callout.vad import BangFilter
+
+    gun = _gunfire(2)
+    flags = BangFilter()(gun[: len(gun) // FRAME * FRAME].reshape(-1, FRAME))
+    assert flags.mean() > 0.3
+    quiet_then_voice = np.concatenate([np.zeros(SAMPLE_RATE // 2, np.float32), _voice(1.5)])
+    flags = BangFilter()(quiet_then_voice[: len(quiet_then_voice) // FRAME * FRAME].reshape(-1, FRAME))
+    assert flags.sum() == 0
+
+
+def test_gunfire_after_speech_does_not_keep_the_sentence_open():
+    # Worst case: the voice detector rates the gunfire 0.42, which used to
+    # count as "still talking" and stretched the caption out.
+    voice, gun = _voice(1.0), _gunfire(3)
+    audio = np.concatenate([np.zeros(8000, np.float32), voice, gun, np.zeros(16000, np.float32)])
+    n = len(audio) // FRAME
+    speech = range(8000 // FRAME, (8000 + len(voice)) // FRAME)
+    gunfire = range((8000 + len(voice)) // FRAME, (8000 + len(voice) + len(gun)) // FRAME)
+    mask = [0.9 if i in speech else 0.42 if i in gunfire else 0.0 for i in range(n)]
+
+    def first_caption(filter_bangs):
+        seg = Segmenter(stub_from_mask(mask), SegmenterConfig(filter_bangs=filter_bangs))
+        for i in range(0, n * FRAME, 480):
+            out = seg.feed(audio[i:i + 480])
+            if out:
+                return i / SAMPLE_RATE, len(out[0]) / SAMPLE_RATE
+        return None, None
+
+    speech_end = (8000 + len(voice)) / SAMPLE_RATE
+    sent_off, length_off = first_caption(False)
+    sent_on, length_on = first_caption(True)
+    # Without the filter the caption waits ~1.5 s into the gunfire (until the
+    # long-sentence rule kicks in); with it, it ends like normal speech.
+    assert sent_off - speech_end > 1.0
+    assert sent_on - speech_end < 0.6 and length_on < 1.6

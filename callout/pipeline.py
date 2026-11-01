@@ -80,6 +80,7 @@ class Pipeline:
                 min_speech_ms=s.min_speech_ms,
                 end_silence_ms=s.end_silence_ms,
                 max_segment_s=s.max_segment_s,
+                filter_bangs=s.filter_bangs,
             ))
             cap = CaptureManager(s.audio_source, s.process_name, s.output_device, on_status=self.cb.source)
         except Exception as exc:  # noqa: BLE001
