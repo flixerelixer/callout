@@ -62,6 +62,12 @@ def self_test() -> int:
         assert probs.shape == (4,), probs.shape
         mono = Downmixer(48000, 2, 32)(np.zeros(9600, dtype=np.float32).tobytes())
         assert mono.size > 0
+        # Transliteration data (pypinyin, anyascii) made it into the build.
+        from .translit import to_latin
+
+        assert to_latin("Привет", "ru") == "Privet", to_latin("Привет", "ru")
+        assert to_latin("你好", "zh") == "nǐ hǎo", to_latin("你好", "zh")
+        assert to_latin("안녕", "ko") == "annyeong", to_latin("안녕", "ko")
         # Progress bars must not crash without a console (model download).
         from tqdm.auto import tqdm
 

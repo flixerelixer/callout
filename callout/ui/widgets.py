@@ -142,7 +142,7 @@ class SignalMeter(QWidget):
 
 
 class _Entry(QFrame):
-    def __init__(self, caption: Caption, parent=None):
+    def __init__(self, caption: Caption, script: str = "native", parent=None):
         super().__init__(parent)
         self.setObjectName("entry")
         self.setStyleSheet(f"QFrame#entry {{ border-bottom: 1px solid {theme.LINE}; }}")
@@ -173,7 +173,7 @@ class _Entry(QFrame):
         english.setStyleSheet("font-size: 16px;")
         texts.addWidget(english)
         if caption.original:
-            original = QLabel(caption.original)
+            original = QLabel("\n".join(caption.original_lines(script)))
             original.setWordWrap(True)
             original.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             original.setStyleSheet(f"color: {theme.MUTED}; font-size: 13px;")
@@ -226,9 +226,9 @@ class CaptionLog(QScrollArea):
         self._layout.addStretch(1)
         self.setWidget(inner)
 
-    def add(self, caption: Caption | Skipped) -> None:
+    def add(self, caption: Caption | Skipped, script: str = "native") -> None:
         self._empty.hide()
-        entry = _SkippedEntry(caption) if isinstance(caption, Skipped) else _Entry(caption)
+        entry = _SkippedEntry(caption) if isinstance(caption, Skipped) else _Entry(caption, script)
         self._layout.insertWidget(0, entry)
         # layout = entries + empty label + stretch
         while self._layout.count() - 2 > self.MAX_ENTRIES:

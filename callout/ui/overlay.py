@@ -80,7 +80,10 @@ class Overlay(QWidget):
 
     def _box_height(self) -> int:
         main, sub = self._line_heights()
-        per = main * 2 + (sub if self.settings.show_original else 0) + PAD_Y * 2 + GAP
+        sub_lines = 0
+        if self.settings.show_original:
+            sub_lines = 2 if self.settings.original_script == "both" else 1
+        per = main * 2 + sub * sub_lines + PAD_Y * 2 + GAP
         return per * max(1, self.settings.max_lines) + 8
 
     def apply_settings(self) -> None:
@@ -179,7 +182,8 @@ class Overlay(QWidget):
     def _sample_items(self) -> list[_Shown]:
         far = time.monotonic() + 3600
         return [
-            _Shown(Caption("ru", "Two on B, one is low. I'm rotating.", "Двое на Б, один лоу. Я ротейчусь."), far),
+            _Shown(Caption("ru", "Two on B, one is low. I'm rotating.", "Двое на Б, один лоу. Я ротейчусь.",
+                           original_latin="Dvoe na B, odin lou. Ya roteychus."), far),
             _Shown(Caption("pl", "Save your rifle, we buy next round.", "Sejwuj karabin, kupujemy w następnej."), far),
         ]
 
@@ -222,8 +226,9 @@ class Overlay(QWidget):
             flags = int(Qt.TextFlag.TextWordWrap)
             main_br = fm_main.boundingRect(QRect(0, 0, text_w, 10000), flags, c.text)
             sub_br = QRect()
-            if s.show_original and c.original:
-                sub_br = fm_sub.boundingRect(QRect(0, 0, text_w, 10000), flags, c.original)
+            sub_text = "\n".join(c.original_lines(s.original_script)) if s.show_original else ""
+            if sub_text:
+                sub_br = fm_sub.boundingRect(QRect(0, 0, text_w, 10000), flags, sub_text)
             content_w = max(main_br.width(), sub_br.width()) + tag_w
             content_h = main_br.height() + (sub_br.height() + 2 if sub_br.height() else 0)
             box_w = min(rect.width() - 8, content_w + PAD_X * 2)
@@ -260,7 +265,7 @@ class Overlay(QWidget):
             if sub_br.height():
                 muted = QColor("#B4BBC7")
                 self._shadow_text(p, sub_font, QRect(int(tx), int(ty + main_br.height() + 2), text_w, sub_br.height()),
-                                  c.original, muted, alpha)
+                                  sub_text, muted, alpha)
             y = by - GAP
         p.end()
 

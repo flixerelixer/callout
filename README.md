@@ -72,6 +72,14 @@ cs2.exe audio ──► voice detector ──► Whisper ───────�
   callouts. Known Whisper hallucinations ("Thanks for watching", subtitle
   credits) are filtered out.
 
+## Reading the original words
+
+Under each translation Callout can show what was actually said. Under
+**Languages → Write the original words in** you choose their own alphabet
+(Привет, 你好), Latin letters (Privet, nǐ hǎo) or both. Latin letters cover
+Cyrillic, Chinese pinyin with tones, Korean, Arabic, Greek, Hebrew, Thai and
+Hindi. Japanese kana become romaji; kanji stay as they are.
+
 ## Privacy and anti-cheat
 
 - Audio never leaves your computer, and nothing you hear is saved to disk.

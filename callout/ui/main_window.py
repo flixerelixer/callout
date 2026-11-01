@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths, updater
+from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths, translit, updater
 from ..config import DEFAULT_HINT, Settings
 from ..engine import Caption, Skipped
 from ..pipeline import Callbacks, Pipeline
@@ -263,6 +263,24 @@ class MainWindow(QMainWindow):
 
         self._section(lay, "What to show")
         self._check(lay, "Show the original words under the translation", "show_original")
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Write the original words in"))
+        script = QComboBox()
+        for key, label in [("native", "Their own alphabet (Привет, 你好)"),
+                           ("latin", "Latin letters (Privet, nǐ hǎo)"),
+                           ("both", "Both")]:
+            script.addItem(label, key)
+        script.setCurrentIndex(max(0, script.findData(self.settings.original_script)))
+
+        def script_changed() -> None:
+            self._set("original_script", script.currentData())
+            self.overlay.apply_settings()
+
+        script.currentIndexChanged.connect(script_changed)
+        row.addWidget(script, 1)
+        lay.addLayout(row)
+        lay.addWidget(self._note("Latin letters cover Cyrillic, Chinese (pinyin), Korean, Arabic, Greek, "
+                                 "Hebrew, Thai and Hindi. Japanese kana become romaji; kanji stay as they are."))
         self._check(lay, "Also caption English speech", "show_english")
         lay.addStretch(1)
         return scroll
@@ -534,6 +552,7 @@ class MainWindow(QMainWindow):
 
     def _test_caption(self) -> None:
         cap = Caption("ru", "Two on B, one is low. I'm rotating.", "Двое на Б, один лоу. Я ротейчусь.", 0.97, 2.1, 180)
+        cap.original_latin = translit.to_latin(cap.original, cap.language)
         self._on_caption(cap)
 
     # ================================================================== GPU
@@ -723,7 +742,7 @@ class MainWindow(QMainWindow):
             self.pill.set("speech" if speech else "live", "Someone is talking" if speech else "Listening")
 
     def _on_caption(self, caption: Caption) -> None:
-        self.log.add(caption)
+        self.log.add(caption, self.settings.original_script)
         self.overlay.add_caption(caption)
 
     def _on_skipped(self, item: Skipped) -> None:

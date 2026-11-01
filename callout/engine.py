@@ -21,10 +21,22 @@ class Caption:
     language: str  # Whisper code of the spoken language
     text: str  # English
     original: str = ""  # Text in the spoken language (if enabled)
+    original_latin: str = ""  # The same in Latin letters, if it uses another alphabet
     confidence: float = 0.0
     duration_s: float = 0.0
     latency_ms: float = 0.0
     created: float = field(default_factory=time.time)
+
+    def original_lines(self, mode: str) -> list[str]:
+        """Original words to show: mode is "native", "latin" or "both"."""
+        if not self.original:
+            return []
+        latin = self.original_latin
+        if mode == "latin":
+            return [latin or self.original]
+        if mode == "both" and latin and latin != self.original:
+            return [self.original, latin]
+        return [self.original]
 
 
 @dataclass

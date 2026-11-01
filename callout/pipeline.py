@@ -15,7 +15,7 @@ from typing import Callable
 
 import numpy as np
 
-from . import gpu_runtime, models
+from . import gpu_runtime, models, translit
 from .config import Settings
 from .engine import Caption, Skipped
 
@@ -186,6 +186,8 @@ class Pipeline:
             elif caption is not None:
                 log.info("Caption: %.1fs of speech, translated in %.0f ms", caption.duration_s,
                          caption.latency_ms)
+                if caption.original:
+                    caption.original_latin = translit.to_latin(caption.original, caption.language)
                 # Debug level on purpose: what teammates say is not written to
                 # the log file unless debug logging is switched on.
                 log.debug("[%s %.0f%% %.0fms] %s | %s", caption.language, caption.confidence * 100,

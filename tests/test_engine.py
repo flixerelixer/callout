@@ -122,3 +122,13 @@ def test_plain_english_with_a_foreign_vote_is_still_skipped():
     t = make(MIXED, {("en", "transcribe"): ("Rotate B, rotate.", -0.2, 0.01)})
     skipped = t.process(AUDIO, Settings())
     assert isinstance(skipped, Skipped) and "English" in skipped.reason
+
+
+def test_original_lines_modes():
+    cap = Caption("ru", "Hi!", "Привет!", original_latin="Privet!")
+    assert cap.original_lines("native") == ["Привет!"]
+    assert cap.original_lines("latin") == ["Privet!"]
+    assert cap.original_lines("both") == ["Привет!", "Privet!"]
+    plain = Caption("pl", "Save it", "Sejwuj")  # already Latin: nothing extra
+    assert plain.original_lines("both") == ["Sejwuj"] and plain.original_lines("latin") == ["Sejwuj"]
+    assert Caption("ru", "Hi").original_lines("both") == []

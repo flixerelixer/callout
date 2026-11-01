@@ -5,11 +5,13 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, co
 
 datas = [("assets", "assets")]
 datas += collect_data_files("faster_whisper")  # bundled Silero VAD model
+datas += collect_data_files("anyascii") + collect_data_files("pypinyin")  # transliteration tables
 
 binaries = collect_dynamic_libs("ctranslate2")
 
 hiddenimports = (
     collect_submodules("huggingface_hub")
+    + collect_submodules("pypinyin")
     + ["hf_xet", "proctap._native", "pyaudiowpatch", "soxr", "psutil"]
 )
 

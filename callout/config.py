@@ -39,6 +39,8 @@ class Settings:
     languages: list[str] = field(default_factory=languages.default_codes)
     show_english: bool = False
     show_original: bool = True
+    # How to write the original words: "native" (Привет), "latin" (Privet) or "both".
+    original_script: str = "native"
     min_language_confidence: float = 0.45
     vocabulary_hint: str = DEFAULT_HINT
 
