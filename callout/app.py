@@ -10,6 +10,16 @@ import sys
 from . import APP_NAME, __version__, gpu_runtime, paths
 
 
+def fix_std_streams() -> None:
+    """A windowed .exe has no console, so sys.stdout/sys.stderr are None.
+    Libraries that print (tqdm progress bars during the model download) then
+    crash with "'NoneType' object has no attribute 'write'". Point them at
+    the null device instead."""
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
+
+
 def _setup_logging() -> None:
     level = logging.DEBUG if os.environ.get("CALLOUT_DEBUG") else logging.INFO
     root = logging.getLogger()
@@ -20,7 +30,7 @@ def _setup_logging() -> None:
     )
     fh.setFormatter(fmt)
     root.addHandler(fh)
-    if sys.stderr is not None:
+    if not getattr(sys, "frozen", False):
         sh = logging.StreamHandler()
         sh.setFormatter(fmt)
         root.addHandler(sh)
@@ -52,6 +62,12 @@ def self_test() -> int:
         assert probs.shape == (4,), probs.shape
         mono = Downmixer(48000, 2, 32)(np.zeros(9600, dtype=np.float32).tobytes())
         assert mono.size > 0
+        # Progress bars must not crash without a console (model download).
+        from tqdm.auto import tqdm
+
+        for _ in tqdm(range(3)):
+            pass
+        print("stdout works")
         log.info("Self-test passed (ctranslate2 %s, CUDA devices: %s)", ctranslate2.__version__,
                  gpu_runtime.cuda_device_count())
         return 0
@@ -61,11 +77,13 @@ def self_test() -> int:
 
 
 def main() -> int:
+    fix_std_streams()
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     _setup_logging()
     log = logging.getLogger("callout")
     log.info("%s %s starting (Python %s)", APP_NAME, __version__, sys.version.split()[0])
-    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
-    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
 
     # Make NVIDIA DLLs findable before ctranslate2 is imported anywhere.
     gpu_runtime.activate()
