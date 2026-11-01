@@ -188,6 +188,39 @@ def mixed_language(text: str, probs: Iterable[tuple[str, float]], enabled: set[s
     return max(candidates, key=lambda code: vote.get(code, 0.0))
 
 
+# Languages Whisper writes in a non-Latin alphabet (Serbian can go either way).
+NON_LATIN = {"ru", "uk", "bg", "kk", "zh", "ja", "ko", "ar", "el", "he", "th", "hi"}
+
+
+def top_candidates(probs: Iterable[tuple[str, float]], n: int = 3, min_share: float = 0.04) -> list[str]:
+    """The n most likely languages Callout knows (English included), folded
+    and renormalised like choose_language."""
+    agg: dict[str, float] = defaultdict(float)
+    for code, p in probs:
+        code = CONFUSABLE.get(code, code)
+        if code == "en" or code in BY_CODE:
+            agg[code] += float(p)
+    total = sum(agg.values()) or 1.0
+    ranked = sorted(agg, key=agg.__getitem__, reverse=True)
+    return [code for code in ranked[:n] if agg[code] / total >= min_share]
+
+
+def wrong_script(text: str, language: str) -> bool:
+    """True when text written 'in' a language uses the wrong alphabet, which
+    is what Whisper does when forced to read speech as the wrong language
+    (Russian forced as English comes out translated, English forced as
+    Russian comes out in Latin letters)."""
+    letters = [ch for ch in text if ch.isalpha()]
+    if len(letters) < 3:
+        return False
+    latin = sum(1 for ch in letters if ord(ch) < 0x250) / len(letters)
+    if language in NON_LATIN:
+        return latin > 0.5
+    if language == "sr":
+        return False
+    return latin < 0.5
+
+
 def looks_untranslated(text: str) -> bool:
     """True when 'English' output is mostly in a non-Latin script, which
     happens when Whisper ignores the translate task."""

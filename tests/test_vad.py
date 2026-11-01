@@ -37,10 +37,16 @@ def test_one_sentence_is_one_segment():
 
 
 def test_short_blip_is_ignored_but_reported():
-    mask = [0.0] * 20 + [0.9] * 4 + [0.0] * 40  # 128 ms "speech", e.g. a gunshot
+    mask = [0.0] * 20 + [0.9] * 5 + [0.0] * 40  # 160 ms of "speech": too short, worth listing
     out, seg = run(mask)
     assert out == []
-    assert len(seg.short_drops) == 1 and 0.1 < seg.short_drops[0] < 0.15
+    assert len(seg.short_drops) == 1 and 0.15 < seg.short_drops[0] < 0.17
+
+
+def test_clicks_are_not_even_listed():
+    mask = [0.0] * 20 + [0.9] * 3 + [0.0] * 40  # 0.1 s: a click
+    out, seg = run(mask)
+    assert out == [] and seg.short_drops == []
 
 
 def test_short_greeting_is_kept():

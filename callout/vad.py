@@ -244,7 +244,7 @@ class Segmenter:
         self._silence_run = 0
         self.in_speech = False
         if speech_frames < self._min_speech:
-            if speech_frames >= 3:  # ignore single clicks and shots
+            if speech_frames >= 5:  # under 0.16 s it's a click, not a word
                 self.short_drops.append(speech_frames * FRAME / SAMPLE_RATE)
             return None
         return np.concatenate(frames)

@@ -86,10 +86,54 @@ def test_greeting_with_split_vote_is_translated():
     assert isinstance(cap, Caption) and cap.text == "Hi!" and cap.language == "ru"
 
 
-def test_unclear_language_reason_names_the_guess():
-    t = make([("de", 0.3), ("nl", 0.3), ("en", 0.3)], {})
+UNSURE = [("no", 0.38), ("en", 0.32), ("ru", 0.22)]  # quick check: Norwegian 41%, too unsure
+
+
+def test_unclear_clip_is_resolved_by_trying_languages():
+    t = make(UNSURE, {
+        ("no", "transcribe"): ("To på B", -1.3, 0.1),
+        ("en", "transcribe"): ("Two on B", -0.9, 0.1),     # Whisper translating, not transcribing
+        ("ru", "transcribe"): ("Двое на Б", -0.3, 0.05),
+        ("ru", "translate"): ("Two on B", -0.3, 0.05),
+    })
+    cap = t.process(AUDIO, Settings())
+    assert isinstance(cap, Caption) and cap.language == "ru" and cap.text == "Two on B"
+    assert cap.original == "Двое на Б"  # the trial transcript is reused, no extra pass
+    assert ("ru", "translate") in [c[:2] for c in t.model.calls]
+
+
+def test_unclear_clip_with_no_good_trial_is_skipped():
+    t = make(UNSURE, {"transcribe": ("mmh", -1.8, 0.4)})
     skipped = t.process(AUDIO, Settings())
-    assert isinstance(skipped, Skipped) and "best guess" in skipped.reason
+    assert isinstance(skipped, Skipped) and "couldn't make out the words" in skipped.reason
+    assert "Norwegian" in skipped.reason and "Russian" in skipped.reason
+
+
+def test_wrong_alphabet_counts_against_a_language():
+    # Forced to English, Whisper wrote Cyrillic: that's not English speech.
+    t = make(UNSURE, {
+        ("no", "transcribe"): ("", -2.0, 0.5),
+        ("en", "transcribe"): ("Двое на Б", -0.35, 0.05),
+        ("ru", "transcribe"): ("Двое на Б", -0.4, 0.05),
+        ("ru", "translate"): ("Two on B", -0.3, 0.05),
+    })
+    cap = t.process(AUDIO, Settings())
+    assert isinstance(cap, Caption) and cap.language == "ru"
+
+
+def test_language_heard_recently_wins_close_calls():
+    outputs = {
+        ("no", "transcribe"): ("", -2.0, 0.5),
+        ("en", "transcribe"): ("Go mid", -0.50, 0.05),
+        ("ru", "transcribe"): ("Гоу мид", -0.55, 0.05),
+        ("ru", "translate"): ("Go mid", -0.4, 0.05),
+    }
+    fresh = make(UNSURE, outputs)
+    assert isinstance(fresh.process(AUDIO, Settings()), Skipped)  # English wins, English is off
+    t = make(UNSURE, outputs)
+    t._remember("ru")  # a teammate spoke Russian a minute ago
+    cap = t.process(AUDIO, Settings())
+    assert isinstance(cap, Caption) and cap.language == "ru"
 
 
 MIXED = [("en", 0.80), ("ru", 0.15), ("uk", 0.02)]

@@ -4,6 +4,8 @@ from callout.filters import (
     is_hallucination,
     looks_untranslated,
     mixed_language,
+    top_candidates,
+    wrong_script,
 )
 
 
@@ -104,3 +106,16 @@ def test_mixed_language_other_scripts():
     assert mixed_language("he said 你好 to me", probs(en=0.9, zh=0.05), {"zh", "ja"}) == "zh"
     assert mixed_language("then こんにちは", probs(en=0.9), {"ja"}) == "ja"
     assert mixed_language("say 안녕하세요", probs(en=0.9), {"ko"}) == "ko"
+
+
+def test_top_candidates():
+    assert top_candidates(probs(no=0.38, en=0.32, ru=0.22, fa=0.05)) == ["no", "en", "ru"]
+    assert top_candidates(probs(be=0.3, ru=0.3, en=0.2)) == ["ru", "en"]  # Belarusian folded in
+
+
+def test_wrong_script():
+    assert wrong_script("Двое на Б", "en")
+    assert wrong_script("Dvoe na B", "ru")
+    assert not wrong_script("Двое на Б", "ru")
+    assert not wrong_script("Two on B", "en")
+    assert not wrong_script("OK", "ru")  # too short to judge
