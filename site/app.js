@@ -52,7 +52,11 @@
       // A still picture instead of the animation.
       LINES.slice(0, MAX_ON_SCREEN).forEach((l) => list.append(caption(l)));
     } else {
-      let i = 0;
+      // Start with one subtitle already on screen, so the demo never opens empty.
+      const first = caption(LINES[0]);
+      list.append(first);
+      setTimeout(() => remove(first), ON_SCREEN_MS);
+      let i = 1;
       let visible = true;
       let timer = null;
 
