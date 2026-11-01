@@ -92,7 +92,7 @@ class MainWindow(QMainWindow):
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self.settings.save)
         self._restart_timer = QTimer(self, singleShot=True, interval=900, timeout=self._restart_if_running)
 
-        self.setWindowTitle(APP_NAME)
+        self.setWindowTitle(f"{APP_NAME} {__version__}")
         if icon:
             self.setWindowIcon(icon)
         self.resize(940, 660)

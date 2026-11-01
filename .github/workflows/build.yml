@@ -104,6 +104,24 @@ jobs:
           if (-not $quit) { Stop-Process -Id $second.Id -Force; throw "The second instance kept running" }
           if (-not (Select-String -Path $log -Pattern "already running" -Quiet)) { throw "The second instance didn't notice the first" }
 
+      - name: Test that an old Callout copy also counts as running
+        shell: pwsh
+        run: |
+          # Copies from before 0.1.8 had no lock; FragSubs must spot them by name.
+          $t = "$env:RUNNER_TEMP\oldcopy"
+          New-Item -ItemType Directory -Force $t | Out-Null
+          Copy-Item "$env:WINDIR\System32\PING.EXE" "$t\Callout.exe"
+          $old = Start-Process -FilePath "$t\Callout.exe" -ArgumentList "-n","90","127.0.0.1" -WindowStyle Hidden -PassThru
+          $env:FRAGSUBS_HOME = "$env:RUNNER_TEMP\fragsubs-oldcopy"
+          $log = "$env:FRAGSUBS_HOME\logs\fragsubs.log"
+          $new = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -PassThru
+          Start-Sleep -Seconds 15
+          Get-Content $log -ErrorAction SilentlyContinue
+          $found = Select-String -Path $log -Pattern "already running \(process" -Quiet
+          Stop-Process -Id $new.Id -Force -ErrorAction SilentlyContinue
+          Stop-Process -Id $old.Id -Force -ErrorAction SilentlyContinue
+          if (-not $found) { throw "FragSubs didn't notice the running Callout.exe" }
+
       - name: Build the installer
         shell: pwsh
         run: |

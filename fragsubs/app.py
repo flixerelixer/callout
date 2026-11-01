@@ -119,8 +119,16 @@ def main() -> int:
     app = QApplication(sys.argv)
     instance = SingleInstance()
     if instance.already_running():
-        log.info("FragSubs is already running; bringing it to the front instead")
-        instance.show_running_instance()
+        log.info("FragSubs is already running (%s); bringing it to the front instead", instance.reason)
+        if not instance.show_running_instance():
+            # An older copy that can't be asked to show itself.
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.information(
+                None, APP_NAME,
+                "FragSubs (or Callout, its old name) is already running. Look for its icon in the "
+                "system tray, next to the clock.\n\nIf you can't find it, end it in Task Manager "
+                "and start FragSubs again.")
         return 0
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
