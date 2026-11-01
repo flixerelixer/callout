@@ -92,3 +92,38 @@ def test_streaming_silero_matches_batch():
         got.append(vad(audio[pos * FRAME:(pos + k) * FRAME].reshape(k, FRAME)))
         pos += k
     assert np.allclose(np.concatenate(got), ref, atol=1e-5)
+
+
+def test_back_to_back_sentences_become_separate_captions():
+    # Four 1.2 s sentences with 0.3 s pauses where game noise keeps the
+    # detector at 0.4: this used to come out as one 6+ s block.
+    sentence, pause = [0.9] * frames_for(1.2), [0.4] * frames_for(0.3)
+    mask = [0.0] * 10 + (sentence + pause) * 4 + [0.0] * 40
+    out, _ = run(mask)
+    assert len(out) >= 2
+    assert all(len(s) / SAMPLE_RATE <= 4.5 for s in out)
+
+
+def test_short_sentence_ends_quickly():
+    # 1 s of speech, then silence: the segment is done within ~0.5 s.
+    mask = [0.0] * 10 + [0.9] * frames_for(1.0) + [0.0] * 60
+    seg = Segmenter(stub_from_mask(mask), SegmenterConfig())
+    audio = np.zeros(len(mask) * FRAME, dtype=np.float32)
+    done_at = None
+    for i in range(0, len(audio), FRAME):
+        if seg.feed(audio[i:i + FRAME]) and done_at is None:
+            done_at = i / SAMPLE_RATE
+    speech_end = (10 + frames_for(1.0)) * FRAME / SAMPLE_RATE
+    assert done_at is not None and done_at - speech_end <= 0.5
+
+
+def test_nonstop_talk_is_cut_at_the_quietest_moment():
+    cfg = SegmenterConfig(max_segment_s=3.0, soft_segment_s=10.0)
+    # Speech with a slight dip (0.45, still "speech" for the soft rule) every second.
+    second = [0.9] * 28 + [0.45] * 3
+    mask = second * 5 + [0.0] * 40
+    out, _ = run(mask, cfg)
+    assert len(out) >= 2
+    first = len(out[0]) // FRAME
+    # The cut lands just after one of the dips, not in the middle of a word.
+    assert first % 31 in (29, 30, 31, 0, 1)

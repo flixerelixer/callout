@@ -184,6 +184,8 @@ class Pipeline:
             if isinstance(caption, Skipped):
                 self.cb.skipped(caption)
             elif caption is not None:
+                log.info("Caption: %.1fs of speech, translated in %.0f ms", caption.duration_s,
+                         caption.latency_ms)
                 # Debug level on purpose: what teammates say is not written to
                 # the log file unless debug logging is switched on.
                 log.debug("[%s %.0f%% %.0fms] %s | %s", caption.language, caption.confidence * 100,

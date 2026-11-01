@@ -41,6 +41,15 @@ def test_old_minimum_speech_length_is_migrated(tmp_path):
     assert Settings.load(path).min_speech_ms == 400
 
 
+def test_old_sentence_timing_is_migrated(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"end_silence_ms": 550, "max_segment_s": 12.0, "settings_version": 2}))
+    s = Settings.load(path)
+    assert s.end_silence_ms == 450 and s.max_segment_s == 6.0
+    path.write_text(json.dumps({"end_silence_ms": 800, "settings_version": 2}))
+    assert Settings.load(path).end_silence_ms == 800  # chosen on purpose
+
+
 def test_corrupt_file_gives_defaults(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not json")

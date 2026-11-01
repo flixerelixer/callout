@@ -345,7 +345,7 @@ class MainWindow(QMainWindow):
         self._slider(form, 2, "Speech detection", "vad_threshold", 20, 80, 100,
                      lambda v: "very sensitive" if v < 35 else "sensitive" if v < 48
                      else "balanced" if v < 60 else "strict", restart=True)
-        self._slider(form, 3, "Pause that ends a sentence", "end_silence_ms", 300, 1500, 1,
+        self._slider(form, 3, "Pause that ends a sentence", "end_silence_ms", 250, 1500, 1,
                      lambda v: f"{v} ms", restart=True)
         form.setColumnStretch(1, 1)
         lay.addLayout(form)
