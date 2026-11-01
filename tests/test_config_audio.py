@@ -45,7 +45,7 @@ def test_old_sentence_timing_is_migrated(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text(json.dumps({"end_silence_ms": 550, "max_segment_s": 12.0, "settings_version": 2}))
     s = Settings.load(path)
-    assert s.end_silence_ms == 450 and s.max_segment_s == 6.0
+    assert s.end_silence_ms == Settings().end_silence_ms and s.max_segment_s == 6.0
     path.write_text(json.dumps({"end_silence_ms": 800, "settings_version": 2}))
     assert Settings.load(path).end_silence_ms == 800  # chosen on purpose
 
@@ -60,6 +60,23 @@ def test_old_vocabulary_box_becomes_extra_words(tmp_path):
     # Words someone typed themselves stay.
     path.write_text(json.dumps({"vocabulary_hint": "Artyom, Kuba", "settings_version": 3}))
     assert Settings.load(path).vocabulary_hint == "Artyom, Kuba"
+
+
+def test_defaults_are_large_v3_sensitive_and_500_ms():
+    s = Settings()
+    assert s.model == "large-v3" and s.end_silence_ms == 500
+    assert 0.35 <= s.vad_threshold < 0.48  # what the slider calls "sensitive"
+
+
+def test_old_speech_defaults_are_migrated(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"vad_threshold": 0.5, "end_silence_ms": 450, "settings_version": 4}))
+    s = Settings.load(path)
+    assert s.vad_threshold == 0.4 and s.end_silence_ms == 500
+    # Values someone picked themselves stay.
+    path.write_text(json.dumps({"vad_threshold": 0.6, "end_silence_ms": 700, "settings_version": 4}))
+    s = Settings.load(path)
+    assert s.vad_threshold == 0.6 and s.end_silence_ms == 700
 
 
 def test_corrupt_file_gives_defaults(tmp_path):

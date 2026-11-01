@@ -30,9 +30,9 @@ class Settings:
     # Output device name for system capture; "" means the Windows default.
     output_device: str = ""
     # Silero VAD speech probability threshold (lower = more sensitive).
-    vad_threshold: float = 0.5
+    vad_threshold: float = 0.4  # "sensitive" on the slider
     min_speech_ms: int = 200
-    end_silence_ms: int = 450
+    end_silence_ms: int = 500
     max_segment_s: float = 6.0
     filter_bangs: bool = True  # gunshots/explosions count as quiet
 
@@ -74,7 +74,7 @@ class Settings:
     auto_update: bool = True
     last_version: str = ""  # used to say "Callout was updated" once
     show_skipped: bool = False  # list heard-but-skipped speech in the Live log
-    settings_version: int = 4
+    settings_version: int = 5
 
     def enabled_languages(self) -> set[str]:
         return {code for code in self.languages if code in languages.BY_CODE}
@@ -110,6 +110,15 @@ class Settings:
         if version < 4:
             if " ".join(str(data.get("vocabulary_hint", "")).split()) == " ".join(LEGACY_HINT.split()):
                 data["vocabulary_hint"] = ""
+        # v4 started at "balanced" speech detection and a 450 ms pause. Now
+        # sensitive (quiet teammates and short callouts get through) with
+        # 500 ms (fewer sentences cut in half); move people still on the old
+        # values.
+        if version < 5:
+            if data.get("vad_threshold") == 0.5:
+                data["vad_threshold"] = settings.vad_threshold
+            if data.get("end_silence_ms") == 450:
+                data["end_silence_ms"] = settings.end_silence_ms
         data["settings_version"] = settings.settings_version
         for f in fields(cls):
             if f.name not in data:
