@@ -114,7 +114,14 @@ def main() -> int:
     from .ui.main_window import MainWindow
     from .ui.overlay import Overlay
 
+    from .single_instance import SingleInstance
+
     app = QApplication(sys.argv)
+    instance = SingleInstance()
+    if instance.already_running():
+        log.info("Callout is already running; bringing it to the front instead")
+        instance.show_running_instance()
+        return 0
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion(__version__)
     app.setQuitOnLastWindowClosed(False)
@@ -127,6 +134,14 @@ def main() -> int:
     settings = Settings.load()
     overlay = Overlay(settings)
     window = MainWindow(settings, overlay, icon)
+
+    def show_window() -> None:
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+
+    # Launching Callout again (desktop shortcut, Start menu) shows this window.
+    instance.listen(show_window)
 
     tray = None
     if QSystemTrayIcon.isSystemTrayAvailable():
@@ -143,11 +158,6 @@ def main() -> int:
         menu.addSeparator()
         menu.addAction(quit_action)
         tray.setContextMenu(menu)
-
-        def show_window() -> None:
-            window.showNormal()
-            window.raise_()
-            window.activateWindow()
 
         def set_captions(on: bool) -> None:
             settings.overlay_enabled = on

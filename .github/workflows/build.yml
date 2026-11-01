@@ -79,6 +79,21 @@ jobs:
           if (Test-Path "$t\install\_internal.old") { throw "The backup was not cleaned up" }
           if (-not (Test-Path "$t\install\Callout.exe")) { throw "Callout.exe is missing after the update" }
 
+      - name: Test that a second launch just shows the first
+        shell: pwsh
+        run: |
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\callout-single"
+          $log = "$env:CALLOUT_HOME\logs\callout.log"
+          $first = Start-Process -FilePath "dist\Callout\Callout.exe" -PassThru
+          Start-Sleep -Seconds 10
+          if ($first.HasExited) { Get-Content $log -ErrorAction SilentlyContinue; throw "The first instance exited on its own" }
+          $second = Start-Process -FilePath "dist\Callout\Callout.exe" -PassThru
+          $quit = $second.WaitForExit(30000)
+          Get-Content $log -ErrorAction SilentlyContinue
+          Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
+          if (-not $quit) { Stop-Process -Id $second.Id -Force; throw "The second instance kept running" }
+          if (-not (Select-String -Path $log -Pattern "already running" -Quiet)) { throw "The second instance didn't notice the first" }
+
       - name: Zip
         id: zip
         shell: pwsh
