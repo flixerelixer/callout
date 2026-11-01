@@ -1,4 +1,10 @@
-from callout.filters import choose_language, clean_text, is_hallucination, looks_untranslated
+from callout.filters import (
+    choose_language,
+    clean_text,
+    is_hallucination,
+    looks_untranslated,
+    mixed_language,
+)
 
 
 def probs(**kw):
@@ -83,3 +89,18 @@ def test_untranslated_detection():
     assert not looks_untranslated("Two on B, one is low")
     assert not looks_untranslated("Zwei auf B")  # Latin script passes
     assert not looks_untranslated("OK")
+
+
+def test_mixed_language_spots_cyrillic_words():
+    vote = probs(en=0.8, ru=0.1, uk=0.08)
+    assert mixed_language("say меня зовут blank", vote, {"ru", "uk"}) == "ru"
+    assert mixed_language("say меня зовут blank", probs(en=0.8, uk=0.15, ru=0.02), {"ru", "uk"}) == "uk"
+    assert mixed_language("say меня зовут blank", vote, {"de"}) is None  # not switched on
+    assert mixed_language("plain English only", vote, {"ru"}) is None
+    assert mixed_language("A я", vote, {"ru"}) is None  # a single letter is not enough
+
+
+def test_mixed_language_other_scripts():
+    assert mixed_language("he said 你好 to me", probs(en=0.9, zh=0.05), {"zh", "ja"}) == "zh"
+    assert mixed_language("then こんにちは", probs(en=0.9), {"ja"}) == "ja"
+    assert mixed_language("say 안녕하세요", probs(en=0.9), {"ko"}) == "ko"

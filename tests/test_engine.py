@@ -20,7 +20,7 @@ class FakeModel:
 
     def transcribe(self, audio, language, task, **kw):
         self.calls.append((language, task, kw.get("initial_prompt")))
-        text, logprob, nsp = self.outputs[task]
+        text, logprob, nsp = self.outputs.get((language, task)) or self.outputs[task]
         seg = SimpleNamespace(text=text, avg_logprob=logprob, no_speech_prob=nsp, compression_ratio=1.2)
         return iter([seg]), None
 
@@ -90,3 +90,35 @@ def test_unclear_language_reason_names_the_guess():
     t = make([("de", 0.3), ("nl", 0.3), ("en", 0.3)], {})
     skipped = t.process(AUDIO, Settings())
     assert isinstance(skipped, Skipped) and "best guess" in skipped.reason
+
+
+MIXED = [("en", 0.80), ("ru", 0.15), ("uk", 0.02)]
+LESSON = "Say меня зовут and then your name."
+
+
+def test_russian_words_in_english_are_translated():
+    t = make(MIXED, {("en", "transcribe"): (LESSON, -0.2, 0.01),
+                     ("ru", "translate"): ("Say my name is and then your name.", -0.3, 0.01)})
+    cap = t.process(AUDIO, Settings())  # English captions off: still translated
+    assert isinstance(cap, Caption)
+    assert cap.language == "ru" and cap.text == "Say my name is and then your name."
+    assert cap.original == LESSON
+    assert [c[:2] for c in t.model.calls] == [("en", "transcribe"), ("ru", "translate")]
+
+
+def test_mixed_words_need_the_language_switched_on():
+    t = make(MIXED, {("en", "transcribe"): (LESSON, -0.2, 0.01)})
+    skipped = t.process(AUDIO, Settings(languages=["de"]))
+    assert isinstance(skipped, Skipped) and "English" in skipped.reason
+
+
+def test_plain_english_costs_nothing_when_english_is_off():
+    t = make([("en", 0.97), ("de", 0.01)], {"transcribe": ("Rotate B.", -0.1, 0.0)})
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and t.model.calls == []
+
+
+def test_plain_english_with_a_foreign_vote_is_still_skipped():
+    t = make(MIXED, {("en", "transcribe"): ("Rotate B, rotate.", -0.2, 0.01)})
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and "English" in skipped.reason

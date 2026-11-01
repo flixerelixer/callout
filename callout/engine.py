@@ -105,11 +105,49 @@ class Translator:
         t0 = time.perf_counter()
         duration = len(audio) / SAMPLE_RATE
         enabled = settings.enabled_languages()
+        hint = settings.vocabulary_hint.strip()
 
         def skip(reason: str, language: str = "", log_reason: str = "") -> Skipped:
             # The log gets the reason without anything that was said.
             log.info("Skipped %.1fs of speech: %s", duration, log_reason or reason)
             return Skipped(reason, duration, language)
+
+        def check(out: Decoded, language: str) -> Skipped | None:
+            if not out.text:
+                return skip("no words recognised", language)
+            if filters.is_hallucination(out.text, avg_logprob=out.avg_logprob,
+                                        no_speech_prob=out.no_speech_prob, hint=hint):
+                return skip(f"ignored “{out.text}” as likely noise", language, "likely noise")
+            if out.avg_logprob < -1.2:
+                return skip(f"too unclear to translate (heard “{out.text}”)", language, "too unclear")
+            return None
+
+        def caption(language: str, text: str, original: str, confidence: float) -> Caption:
+            return Caption(language=language, text=text, original=original, confidence=confidence,
+                           duration_s=duration, latency_ms=(time.perf_counter() - t0) * 1000)
+
+        def translate(language: str, confidence: float, original: str | None = None) -> Caption | Skipped:
+            english = self._decode(audio, language, "translate", hint)
+            if filters.looks_untranslated(english.text):
+                # Whisper sometimes answers in the spoken language; one retry with
+                # sampling usually gets English out of it.
+                log.debug("Untranslated output; retrying")
+                english = self._decode(audio, language, "translate", hint, temperature=(0.3, 0.6))
+                if filters.looks_untranslated(english.text):
+                    return skip("Whisper didn't translate it", language)
+            problem = check(english, language)
+            if problem:
+                return problem
+            if original is None:
+                original = ""
+                if settings.show_original:
+                    # No hint here: an English prompt nudges Whisper into English.
+                    native = self._decode(audio, language, "transcribe", "")
+                    if native.text and not filters.is_hallucination(
+                        native.text, avg_logprob=native.avg_logprob, no_speech_prob=native.no_speech_prob
+                    ):
+                        original = native.text
+            return caption(language, english.text, original if settings.show_original else "", confidence)
 
         _lang, _p, all_probs = self.model.detect_language(audio)
         language, confidence, guess = filters.choose_language(
@@ -120,48 +158,26 @@ class Translator:
                 return skip(f"couldn't tell the language (best guess {languages.display_name(guess)}, "
                             f"{confidence:.0%} sure)", guess)
             return skip("couldn't tell the language")
-        if language == "en":
-            if not settings.show_english:
-                return skip("English (captioning English is off)", "en")
-            task = "transcribe"
-        elif language in enabled:
-            task = "translate"
-        else:
-            return skip(f"{languages.display_name(language)} is switched off under Languages", language)
 
-        hint = settings.vocabulary_hint.strip()
-        english = self._decode(audio, language, task, hint)
-        if task == "translate" and filters.looks_untranslated(english.text):
-            # Whisper sometimes answers in the spoken language; one retry with
-            # sampling usually gets English out of it.
-            log.debug("Untranslated output %r; retrying", english.text)
-            english = self._decode(audio, language, task, hint, temperature=(0.3, 0.6))
-            if filters.looks_untranslated(english.text):
-                return skip("Whisper didn't translate it", language)
-        if not english.text:
-            return skip("no words recognised", language)
-        if filters.is_hallucination(
-            english.text, avg_logprob=english.avg_logprob,
-            no_speech_prob=english.no_speech_prob, hint=hint,
-        ):
-            return skip(f"ignored “{english.text}” as likely noise", language, "likely noise")
-        if english.avg_logprob < -1.2:
-            return skip(f"too unclear to translate (heard “{english.text}”)", language, "too unclear")
+        if language != "en":
+            if language not in enabled:
+                return skip(f"{languages.display_name(language)} is switched off under Languages", language)
+            return translate(language, confidence)
 
-        original = ""
-        if settings.show_original and language != "en":
-            # No hint here: an English prompt nudges Whisper into English.
-            native = self._decode(audio, language, "transcribe", "")
-            if native.text and not filters.is_hallucination(
-                native.text, avg_logprob=native.avg_logprob, no_speech_prob=native.no_speech_prob
-            ):
-                original = native.text
-
-        return Caption(
-            language=language,
-            text=english.text,
-            original=original,
-            confidence=confidence,
-            duration_s=duration,
-            latency_ms=(time.perf_counter() - t0) * 1000,
-        )
+        # English, possibly with words from another language mixed in
+        # ("меня зовут means my name is"). Only worth a look when one of your
+        # languages got some of the vote, or when English is captioned anyway.
+        if not settings.show_english and filters.enabled_share(all_probs, enabled) < 0.05:
+            return skip("English (captioning English is off)", "en")
+        heard = self._decode(audio, "en", "transcribe", hint)
+        foreign = filters.mixed_language(heard.text, all_probs, enabled)
+        if foreign:
+            mixed = translate(foreign, confidence, original=heard.text)
+            if isinstance(mixed, Caption):
+                return mixed
+        if not settings.show_english:
+            return skip("English (captioning English is off)", "en")
+        problem = check(heard, "en")
+        if problem:
+            return problem
+        return caption("en", heard.text, "", confidence)

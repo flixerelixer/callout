@@ -1,5 +1,5 @@
 """Callout: live translation of in-game voice chat, shown as an overlay."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 APP_NAME = "Callout"
 REPO_URL = "https://github.com/fgmrkt/callout"

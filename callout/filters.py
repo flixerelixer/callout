@@ -7,6 +7,7 @@ Russian subtitle credits, ...). These checks keep that off the overlay.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import defaultdict
 from typing import Iterable
 
@@ -136,6 +137,55 @@ def choose_language(
         if mass >= enabled_mass:
             return best, conf, best
     return None, conf, best
+
+
+# Writing systems that give away the language of words mixed into English,
+# and the languages that use them.
+SCRIPT_LANGUAGES: dict[str, list[str]] = {
+    "CYRILLIC": ["ru", "uk", "bg", "sr", "kk"],
+    "CJK": ["zh", "ja"],
+    "HIRAGANA": ["ja"],
+    "KATAKANA": ["ja"],
+    "HANGUL": ["ko"],
+    "ARABIC": ["ar"],
+    "GREEK": ["el"],
+    "HEBREW": ["he"],
+    "THAI": ["th"],
+    "DEVANAGARI": ["hi"],
+}
+
+
+def _script(ch: str) -> str:
+    try:
+        return unicodedata.name(ch).split(" ", 1)[0]
+    except ValueError:
+        return ""
+
+
+def enabled_share(probs: Iterable[tuple[str, float]], enabled: set[str]) -> float:
+    """How much of Whisper's language vote went to languages you translate."""
+    return sum(float(p) for code, p in probs if CONFUSABLE.get(code, code) in enabled)
+
+
+def mixed_language(text: str, probs: Iterable[tuple[str, float]], enabled: set[str]) -> str | None:
+    """For English output that contains words in another writing system
+    ("say меня зовут"), the enabled language those words are most likely in."""
+    counts: dict[str, int] = defaultdict(int)
+    for ch in text:
+        if ch.isalpha() and ord(ch) >= 0x250:
+            script = _script(ch)
+            if script in SCRIPT_LANGUAGES:
+                counts[script] += 1
+    if not counts or max(counts.values()) < 2:
+        return None
+    script = max(counts, key=counts.__getitem__)
+    candidates = [code for code in SCRIPT_LANGUAGES[script] if code in enabled]
+    if not candidates:
+        return None
+    vote: dict[str, float] = defaultdict(float)
+    for code, p in probs:
+        vote[CONFUSABLE.get(code, code)] += float(p)
+    return max(candidates, key=lambda code: vote.get(code, 0.0))
 
 
 def looks_untranslated(text: str) -> bool:
