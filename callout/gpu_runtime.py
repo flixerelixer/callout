@@ -1,7 +1,7 @@
 """NVIDIA GPU runtime (cuBLAS + cuDNN) for Whisper.
 
 The libraries are about 1.2 GB, so they are not bundled with the app.
-Instead Callout downloads NVIDIA's official wheels from PyPI on first use,
+Instead FragSubs downloads NVIDIA's official wheels from PyPI on first use,
 verifies their SHA-256, and extracts just the DLLs into the app data folder.
 """
 
@@ -135,7 +135,7 @@ def gpu_name() -> str:
 
 def _wheel_info(package: str, version: str) -> dict:
     url = f"https://pypi.org/pypi/{package}/{version}/json"
-    req = urllib.request.Request(url, headers={"User-Agent": "Callout"})
+    req = urllib.request.Request(url, headers={"User-Agent": "FragSubs"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.load(resp)
     for f in data.get("urls", []):
@@ -160,7 +160,7 @@ def download(progress: Callable[[int, int, str], None] | None = None,
             label = name.replace("nvidia-", "").replace("-cu12", "")
             wheel_path = staging / info["filename"]
             sha = hashlib.sha256()
-            req = urllib.request.Request(info["url"], headers={"User-Agent": "Callout"})
+            req = urllib.request.Request(info["url"], headers={"User-Agent": "FragSubs"})
             with urllib.request.urlopen(req, timeout=60) as resp, open(wheel_path, "wb") as out:
                 while True:
                     if cancel.is_set():

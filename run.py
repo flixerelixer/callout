@@ -1,4 +1,4 @@
-"""Start Callout from a source checkout (also the PyInstaller entry point)."""
+"""Start FragSubs from a source checkout (also the PyInstaller entry point)."""
 
 import multiprocessing
 import sys

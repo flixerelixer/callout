@@ -27,7 +27,9 @@ def release_json(**over):
         "prerelease": False,
         "assets": [
             {"name": "notes.txt", "browser_download_url": "https://x/notes.txt", "size": 1},
-            {"name": "Callout-v0.2.0-win64.zip", "browser_download_url": "https://x/c.zip",
+            {"name": "Callout-v0.2.0-win64.zip", "browser_download_url": "https://x/old.zip", "size": 9},
+            {"name": "FragSubs-Setup.exe", "browser_download_url": "https://x/setup.exe", "size": 9},
+            {"name": "FragSubs-v0.2.0-win64.zip", "browser_download_url": "https://x/c.zip",
              "size": 1234, "digest": "sha256:abc123"},
         ],
     }
@@ -35,7 +37,7 @@ def release_json(**over):
     return data
 
 
-def test_release_from_json_picks_the_windows_zip():
+def test_release_from_json_picks_the_fragsubs_zip():
     rel = updater.release_from_json(release_json())
     assert rel.version == "0.2.0"
     assert rel.url == "https://x/c.zip"
@@ -61,33 +63,35 @@ def test_source_checkout_does_not_self_update():
 
 def make_zip(path):
     with zipfile.ZipFile(path, "w") as zf:
-        zf.writestr("Callout/Callout.exe", b"MZ fake exe")
-        zf.writestr("Callout/_internal/marker.txt", "new")
+        zf.writestr("FragSubs/FragSubs.exe", b"MZ fake exe")
+        zf.writestr("FragSubs/_internal/marker.txt", "new")
     data = path.read_bytes()
     return len(data), hashlib.sha256(data).hexdigest()
 
 
 def test_download_and_unpack(tmp_path, monkeypatch):
     monkeypatch.setenv("CALLOUT_HOME", str(tmp_path / "home"))
-    zpath = tmp_path / "Callout-v0.2.0-win64.zip"
+    zpath = tmp_path / "FragSubs-v0.2.0-win64.zip"
     size, sha = make_zip(zpath)
     rel = updater.Release("0.2.0", zpath.as_uri(), size, sha, "")
     seen = []
-    new_dir = updater.download(rel, lambda done, total: seen.append(done))
-    assert (new_dir / "Callout.exe").exists()
-    assert (new_dir / "_internal" / "marker.txt").read_text() == "new"
+    new_exe = updater.download(rel, lambda done, total: seen.append(done))
+    assert new_exe.name == "FragSubs.exe" and new_exe.exists()
+    assert (new_exe.parent / "_internal" / "marker.txt").read_text() == "new"
     assert seen and seen[-1] == size
 
 
 def test_download_rejects_bad_checksum(tmp_path, monkeypatch):
     monkeypatch.setenv("CALLOUT_HOME", str(tmp_path / "home"))
-    zpath = tmp_path / "Callout-v0.2.0-win64.zip"
+    zpath = tmp_path / "FragSubs-v0.2.0-win64.zip"
     size, _ = make_zip(zpath)
     rel = updater.Release("0.2.0", zpath.as_uri(), size, "0" * 64, "")
     with pytest.raises(RuntimeError, match="checksum"):
         updater.download(rel)
 
 
-def test_update_script_mentions_rollback():
+def test_update_script_mentions_rollback_and_keeps_the_exe_name():
     script = updater.UPDATE_SCRIPT
     assert "_internal.old" in script and "restoring the previous version" in script
+    # Old installs run as Callout.exe: the script writes to whatever name is running.
+    assert "$ExeName" in script and "$NewExeName" in script

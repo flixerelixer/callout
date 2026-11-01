@@ -40,7 +40,7 @@ class Overlay(QWidget):
         self._items: list[_Shown] = []
         self._edit = False
         self._drag_from: QPoint | None = None
-        self.setWindowTitle("Callout overlay")
+        self.setWindowTitle("FragSubs overlay")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
@@ -201,7 +201,7 @@ class Overlay(QWidget):
             p.setFont(theme.ui_font(13))
             p.setPen(QColor(theme.TEXT))
             p.drawText(rect.adjusted(12, 10, -12, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter,
-                       "Drag to move. Scroll to change the width. Press Done in Callout when you're finished.")
+                       "Drag to move. Scroll to change the width. Press Done in FragSubs when you're finished.")
 
         items = self._items if self._items else (self._sample_items() if self._edit else [])
         if not items:

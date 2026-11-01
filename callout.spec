@@ -1,5 +1,5 @@
 # PyInstaller build for Windows:  pyinstaller callout.spec --noconfirm
-# Produces dist/Callout/Callout.exe (a folder build; starts faster than one-file).
+# Produces dist/FragSubs/FragSubs.exe (a folder build; starts faster than one-file).
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
@@ -43,10 +43,10 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Callout",
+    name="FragSubs",
     icon="assets/icon.ico",
     console=False,
     upx=False,
     version=None,
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="Callout", upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name="FragSubs", upx=False)

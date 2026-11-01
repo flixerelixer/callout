@@ -102,7 +102,7 @@ def main() -> int:
             import ctypes
 
             # Own taskbar icon instead of Python's.
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("fgmrkt.callout")
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("fgmrkt.fragsubs")
         except Exception:  # noqa: BLE001
             pass
 
@@ -119,7 +119,7 @@ def main() -> int:
     app = QApplication(sys.argv)
     instance = SingleInstance()
     if instance.already_running():
-        log.info("Callout is already running; bringing it to the front instead")
+        log.info("FragSubs is already running; bringing it to the front instead")
         instance.show_running_instance()
         return 0
     app.setApplicationName(APP_NAME)
@@ -140,7 +140,7 @@ def main() -> int:
         window.raise_()
         window.activateWindow()
 
-    # Launching Callout again (desktop shortcut, Start menu) shows this window.
+    # Launching FragSubs again (desktop shortcut, Start menu) shows this window.
     instance.listen(show_window)
 
     tray = None
@@ -148,7 +148,7 @@ def main() -> int:
         tray = QSystemTrayIcon(icon, app)
         tray.setToolTip(APP_NAME)
         menu = QMenu()
-        show_action = QAction("Open Callout", menu)
+        show_action = QAction(f"Open {APP_NAME}", menu)
         toggle_action = QAction("Start listening", menu)
         captions_action = QAction("Show captions", menu, checkable=True)
         captions_action.setChecked(settings.overlay_enabled)

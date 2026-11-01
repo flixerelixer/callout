@@ -2,7 +2,8 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    # ci/** branches run the full build and tests without publishing.
+    branches: [main, "ci/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -43,7 +44,9 @@ jobs:
             gh release view "v$v" --repo "${{ github.repository }}" 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { $publish = "true" }
           }
+          $label = if ($publish -eq "true") { "v$v" } else { "dev-$("${{ github.sha }}".Substring(0,7))" }
           "version=$v" >> $env:GITHUB_OUTPUT
+          "label=$label" >> $env:GITHUB_OUTPUT
           "publish=$publish" >> $env:GITHUB_OUTPUT
           Write-Output "Version $v, publish release: $publish"
           exit 0
@@ -57,63 +60,110 @@ jobs:
       - name: Smoke-test the packaged app
         shell: pwsh
         run: |
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\callout-home"
-          $p = Start-Process -FilePath "dist\Callout\Callout.exe" -ArgumentList "--self-test" -Wait -PassThru
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-home"
+          $p = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -ArgumentList "--self-test" -Wait -PassThru
           Get-Content "$env:CALLOUT_HOME\logs\callout.log" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
 
+      # Copies installed before the rename run as Callout.exe; the updater must
+      # put the new program under that same name.
       - name: Test the self-updater script
         shell: pwsh
         run: |
           $t = "$env:RUNNER_TEMP\updtest"
           New-Item -ItemType Directory -Force $t | Out-Null
-          Copy-Item dist\Callout "$t\install" -Recurse
+          Copy-Item dist\FragSubs "$t\install" -Recurse
+          Rename-Item "$t\install\FragSubs.exe" "Callout.exe"
           New-Item -ItemType Directory -Force "$t\new" | Out-Null
-          Copy-Item dist\Callout "$t\new\Callout" -Recurse
-          "new version" | Out-File "$t\new\Callout\_internal\marker.txt"
+          Copy-Item dist\FragSubs "$t\new\FragSubs" -Recurse
+          "new version" | Out-File "$t\new\FragSubs\_internal\marker.txt"
           python -c "import sys; from callout.updater import UPDATE_SCRIPT; open(sys.argv[1], 'w', encoding='utf-8').write(UPDATE_SCRIPT)" "$t\apply.ps1"
           $app = Start-Process -FilePath powershell -ArgumentList "-NoProfile","-Command","Start-Sleep 3" -WindowStyle Hidden -PassThru
-          powershell -NoProfile -ExecutionPolicy Bypass -File "$t\apply.ps1" -AppPid $app.Id -Install "$t\install" -New "$t\new\Callout" -Log "$t\update.log" -NoRestart
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$t\apply.ps1" -AppPid $app.Id -Install "$t\install" -New "$t\new\FragSubs" -Log "$t\update.log" -ExeName "Callout.exe" -NewExeName "FragSubs.exe" -NoRestart
           Get-Content "$t\update.log"
           if (-not (Test-Path "$t\install\_internal\marker.txt")) { throw "The update was not applied" }
           if (Test-Path "$t\install\_internal.old") { throw "The backup was not cleaned up" }
           if (-not (Test-Path "$t\install\Callout.exe")) { throw "Callout.exe is missing after the update" }
+          if (Test-Path "$t\install\FragSubs.exe") { throw "The updater added a second exe" }
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-home2"
+          $p = Start-Process -FilePath "$t\install\Callout.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The updated program doesn't start (exit $($p.ExitCode))" }
 
       - name: Test that a second launch just shows the first
         shell: pwsh
         run: |
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\callout-single"
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-single"
           $log = "$env:CALLOUT_HOME\logs\callout.log"
-          $first = Start-Process -FilePath "dist\Callout\Callout.exe" -PassThru
+          $first = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -PassThru
           Start-Sleep -Seconds 10
           if ($first.HasExited) { Get-Content $log -ErrorAction SilentlyContinue; throw "The first instance exited on its own" }
-          $second = Start-Process -FilePath "dist\Callout\Callout.exe" -PassThru
+          $second = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -PassThru
           $quit = $second.WaitForExit(30000)
           Get-Content $log -ErrorAction SilentlyContinue
           Stop-Process -Id $first.Id -Force -ErrorAction SilentlyContinue
           if (-not $quit) { Stop-Process -Id $second.Id -Force; throw "The second instance kept running" }
           if (-not (Select-String -Path $log -Pattern "already running" -Quiet)) { throw "The second instance didn't notice the first" }
 
-      - name: Zip
+      - name: Build the installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y | Out-Null
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup 6\ISCC.exe", "C:\Program Files\Inno Setup 6\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup compiler not found" }
+          & $iscc.FullName "/DAppVersion=${{ steps.rel.outputs.version }}" installer\fragsubs.iss
+          if ($LASTEXITCODE -ne 0) { throw "Installer build failed" }
+          Get-Item dist\FragSubs-Setup.exe
+
+      - name: Test the installer (install, start, uninstall)
+        shell: pwsh
+        run: |
+          $setup = Start-Process -FilePath "dist\FragSubs-Setup.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=desktopicon" -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "Setup failed with exit code $($setup.ExitCode)" }
+          $app = "$env:LOCALAPPDATA\Programs\FragSubs"
+          if (-not (Test-Path "$app\FragSubs.exe")) { throw "FragSubs.exe was not installed" }
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-installed"
+          $p = Start-Process -FilePath "$app\FragSubs.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The installed app failed its self-test" }
+          $un = Start-Process -FilePath "$app\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path "$app\FragSubs.exe") { throw "Uninstall left the program behind" }
+
+      - name: Package
         id: zip
         shell: pwsh
         run: |
-          $version = if ("${{ steps.rel.outputs.publish }}" -eq "true") { "v${{ steps.rel.outputs.version }}" } else { "dev-$("${{ github.sha }}".Substring(0,7))" }
-          $name = "Callout-$version-win64.zip"
-          Compress-Archive -Path dist\Callout -DestinationPath $name
-          "name=$name" >> $env:GITHUB_OUTPUT
+          $label = "${{ steps.rel.outputs.label }}"
+          $zip = "FragSubs-$label-win64.zip"
+          Compress-Archive -Path dist\FragSubs -DestinationPath $zip
+          # For copies from before the rename: their updater looks for
+          # Callout-vX-win64.zip with Callout.exe inside. Keep publishing it.
+          $compatDir = "$env:RUNNER_TEMP\compat\Callout"
+          Copy-Item dist\FragSubs $compatDir -Recurse
+          Rename-Item "$compatDir\FragSubs.exe" "Callout.exe"
+          $compat = "Callout-$label-win64.zip"
+          Compress-Archive -Path $compatDir -DestinationPath $compat
+          Copy-Item dist\FragSubs-Setup.exe FragSubs-Setup.exe
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+          "compat=$compat" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Callout-win64
-          path: ${{ steps.zip.outputs.name }}
+          name: FragSubs-win64
+          path: |
+            ${{ steps.zip.outputs.zip }}
+            FragSubs-Setup.exe
 
+      # The website links to .../releases/latest/download/FragSubs-Setup.exe,
+      # so the installer keeps the same file name in every release.
       - name: Publish release
         if: steps.rel.outputs.publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.rel.outputs.version }}
-          name: Callout ${{ steps.rel.outputs.version }}
+          name: FragSubs ${{ steps.rel.outputs.version }}
           target_commitish: ${{ github.sha }}
-          files: ${{ steps.zip.outputs.name }}
+          files: |
+            FragSubs-Setup.exe
+            ${{ steps.zip.outputs.zip }}
+            ${{ steps.zip.outputs.compat }}
           generate_release_notes: true

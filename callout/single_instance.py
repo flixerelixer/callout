@@ -1,4 +1,4 @@
-"""Make sure only one Callout runs at a time.
+"""Make sure only one FragSubs runs at a time.
 
 On Windows a named mutex is the lock (it disappears the moment the process
 exits, even after a crash, so an update or restart is never blocked). A local
@@ -24,7 +24,7 @@ def _name() -> str:
     except Exception:  # noqa: BLE001
         user = "user"
     safe = "".join(ch for ch in user if ch.isalnum()) or "user"
-    return f"fgmrkt.callout.{safe}"
+    return f"fgmrkt.fragsubs.{safe}"
 
 
 class SingleInstance:
@@ -34,7 +34,7 @@ class SingleInstance:
         self._server = None
 
     def already_running(self) -> bool:
-        """True if another Callout holds the lock. Call once, early."""
+        """True if another FragSubs holds the lock. Call once, early."""
         if sys.platform == "win32":
             import ctypes
             from ctypes import wintypes
@@ -66,7 +66,7 @@ class SingleInstance:
         return True
 
     def show_running_instance(self) -> bool:
-        """Ask the running Callout to bring its window to the front."""
+        """Ask the running FragSubs to bring its window to the front."""
         if sys.platform == "win32":
             try:
                 import ctypes
@@ -78,7 +78,7 @@ class SingleInstance:
                 pass
         ok = self._connect(b"show\n")
         if not ok:
-            log.warning("Callout is already running but didn't answer")
+            log.warning("FragSubs is already running but didn't answer")
         return ok
 
     def listen(self, on_show: Callable[[], None]) -> None:

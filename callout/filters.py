@@ -107,7 +107,7 @@ def choose_language(
 ) -> tuple[str | None, float, str]:
     """Pick the spoken language from Whisper's language probabilities.
 
-    Only languages Callout knows about (plus English) are considered, with
+    Only languages FragSubs knows about (plus English) are considered, with
     close relatives folded together (Belarusian counts as Russian, etc.), and
     the result is renormalised over that set.
 
@@ -193,7 +193,7 @@ NON_LATIN = {"ru", "uk", "bg", "kk", "zh", "ja", "ko", "ar", "el", "he", "th", "
 
 
 def top_candidates(probs: Iterable[tuple[str, float]], n: int = 3, min_share: float = 0.04) -> list[str]:
-    """The n most likely languages Callout knows (English included), folded
+    """The n most likely languages FragSubs knows (English included), folded
     and renormalised like choose_language."""
     agg: dict[str, float] = defaultdict(float)
     for code, p in probs:

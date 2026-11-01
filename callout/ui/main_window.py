@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths, translit, updater
+from .. import APP_NAME, REPO_URL, WEBSITE, __version__, audio, gpu_runtime, languages, models, paths, translit, updater
 from ..config import DEFAULT_HINT, Settings
 from ..engine import Caption, Skipped
 from ..pipeline import Callbacks, Pipeline
@@ -370,7 +370,7 @@ class MainWindow(QMainWindow):
         self._check(lay, "Ignore gunshots and explosions (they can't stretch a sentence, and Whisper "
                          "hears them turned down)", "filter_bangs", restart=True)
         lay.addWidget(self._note(
-            "Callout only reads the sound the game plays. It does not touch the game's memory or "
+            "FragSubs only reads the sound the game plays. It does not touch the game's memory or "
             "files, so it is safe with VAC."))
 
         self._section(lay, "Speech model")
@@ -426,27 +426,30 @@ class MainWindow(QMainWindow):
         lay.addWidget(self._note(
             "Audio never leaves your computer and nothing you hear is saved. The only downloads are "
             "the speech model (from Hugging Face), NVIDIA's libraries for NVIDIA GPUs (from PyPI) and "
-            "Callout updates (from GitHub)."))
+            "FragSubs updates (from GitHub)."))
         self._section(lay, "Good to know")
         lay.addWidget(self._note(
-            "Callout cannot tell teammates apart in in-game voice chat, because the game mixes them "
+            "FragSubs cannot tell teammates apart in in-game voice chat, because the game mixes them "
             "into one sound. Translations arrive about a second after someone stops talking. Loud "
             "gunfights and heavy slang lower the accuracy."))
         self._section(lay, "Updates")
-        self._check(lay, "Update automatically when Callout starts", "auto_update")
+        self._check(lay, "Update automatically when FragSubs starts", "auto_update")
         upd = QPushButton("Check for updates")
         upd.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         upd.clicked.connect(lambda: self.check_updates(manual=True))
         lay.addWidget(upd)
         self._section(lay, "Settings")
         self._check(lay, "Keep running in the system tray when this window is closed", "minimize_to_tray")
-        self._check(lay, "Start listening when Callout opens", "start_listening_on_launch")
+        self._check(lay, "Start listening when FragSubs opens", "start_listening_on_launch")
         row = QHBoxLayout()
         for label, target in [("Open the data folder", paths.app_data_dir), ("Open the log folder", paths.logs_dir)]:
             b = QPushButton(label)
             b.clicked.connect(lambda _=False, t=target: QDesktopServices.openUrl(QUrl.fromLocalFile(str(t()))))
             row.addWidget(b)
-        gh = QPushButton("Project page on GitHub")
+        site = QPushButton("fragsubs.com")
+        site.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(WEBSITE)))
+        row.addWidget(site)
+        gh = QPushButton("Source on GitHub")
         gh.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(REPO_URL)))
         row.addWidget(gh)
         row.addStretch(1)
@@ -570,7 +573,7 @@ class MainWindow(QMainWindow):
         if self._gpu_count is None:
             return
         if self._gpu_count == 0:
-            self.gpu_note.setText("No NVIDIA GPU found, so Callout runs on the CPU. Pick the Small model for "
+            self.gpu_note.setText("No NVIDIA GPU found, so FragSubs runs on the CPU. Pick the Small model for "
                                   "real-time speed.")
             self.gpu_btn.hide()
             return
@@ -625,9 +628,9 @@ class MainWindow(QMainWindow):
         box.setWindowTitle(APP_NAME)
         box.setText("Download GPU support?")
         box.setInformativeText(
-            "Callout found an NVIDIA GPU. To run the speech model on it, it needs NVIDIA's cuBLAS and "
+            "FragSubs found an NVIDIA GPU. To run the speech model on it, it needs NVIDIA's cuBLAS and "
             "cuDNN libraries: a one-time download of about 1.2 GB (1.8 GB on disk).\n\n"
-            "Without them Callout runs on the CPU, which is too slow for the large model.")
+            "Without them FragSubs runs on the CPU, which is too slow for the large model.")
         dl = box.addButton("Download and start", QMessageBox.ButtonRole.AcceptRole)
         cpu = box.addButton("Use the CPU this time", QMessageBox.ButtonRole.DestructiveRole)
         box.addButton(QMessageBox.StandardButton.Cancel)
@@ -796,7 +799,7 @@ class MainWindow(QMainWindow):
     def _announce_update(self) -> None:
         last = self.settings.last_version
         if last and updater.is_newer(__version__, last):
-            self._show_notice(f"Callout was updated to {__version__}.")
+            self._show_notice(f"FragSubs was updated to {__version__}.")
             QTimer.singleShot(8000, lambda: self.notice.hide() if "updated to" in self.notice_label.text() else None)
         if last != __version__:
             self.settings.last_version = __version__
@@ -835,7 +838,7 @@ class MainWindow(QMainWindow):
             try:
                 new_dir = updater.download(
                     release, lambda done, total: self.bridge.progress.emit(
-                        f"Downloading Callout {release.version}", done, total), self._cancel)
+                        f"Downloading FragSubs {release.version}", done, total), self._cancel)
                 self.bridge.task_done.emit("update_ready", new_dir)
             except updater.Cancelled:
                 self.bridge.task_done.emit("update_ready", "cancelled")
@@ -845,7 +848,7 @@ class MainWindow(QMainWindow):
 
         self._update_thread = threading.Thread(target=work, daemon=True)
         self._update_thread.start()
-        self._show_notice(f"Downloading Callout {release.version}…", busy=True)
+        self._show_notice(f"Downloading FragSubs {release.version}…", busy=True)
 
     def _on_update_result(self, name: str, result) -> None:
         self._update_thread = None
@@ -865,10 +868,10 @@ class MainWindow(QMainWindow):
             if not manual and ok and not self._running and self._task is None:
                 self._install_update()
             else:
-                self._show_notice_action(f"Callout {outcome.version} is available (you have {__version__}).",
+                self._show_notice_action(f"FragSubs {outcome.version} is available (you have {__version__}).",
                                          "Update now", self._install_update)
                 if hasattr(self, "notify") and not manual and not self.isVisible():
-                    self.notify(f"Callout {outcome.version} is available.")
+                    self.notify(f"FragSubs {outcome.version} is available.")
             return
         if name == "update_ready":
             if result == "cancelled":
@@ -896,7 +899,7 @@ class MainWindow(QMainWindow):
             self.hide()
             if not self._tray_hint_shown and hasattr(self, "notify"):
                 self._tray_hint_shown = True
-                self.notify("Callout is still running in the system tray.")
+                self.notify("FragSubs is still running in the system tray.")
             return
         self.shutdown()
         event.accept()

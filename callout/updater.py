@@ -1,11 +1,15 @@
 """Self-update from GitHub Releases.
 
-On start, Callout asks GitHub for the latest release. If it is newer, the
+On start, FragSubs asks GitHub for the latest release. If it is newer, the
 release zip is downloaded and unpacked next to the user's data, then a small
-PowerShell script waits for Callout to exit, swaps in the new program files
+PowerShell script waits for FragSubs to exit, swaps in the new program files
 (keeping the old ones until the copy succeeds) and starts the new version.
 
-Settings, models and the GPU runtime live in %LOCALAPPDATA%\\Callout and are
+The running exe keeps its own file name, so copies installed before the
+rename (Callout.exe) keep working. Every release also carries a
+"Callout-vX-win64.zip" for those older copies' updater.
+
+Settings, models and the GPU runtime live in %LOCALAPPDATA%\\FragSubs and are
 never touched by an update.
 """
 
@@ -33,8 +37,7 @@ log = logging.getLogger(__name__)
 
 API_LATEST = REPO_URL.replace("https://github.com/", "https://api.github.com/repos/") + "/releases/latest"
 RELEASES_PAGE = REPO_URL + "/releases"
-ASSET_PATTERN = re.compile(r"^Callout-v?[\d.]+-win64\.zip$", re.IGNORECASE)
-EXE_NAME = "Callout.exe"
+ASSET_PATTERN = re.compile(r"^FragSubs-v?[\d.]+-win64\.zip$", re.IGNORECASE)
 
 
 class Cancelled(Exception):
@@ -91,19 +94,20 @@ def can_self_update() -> tuple[bool, str]:
     target = install_dir()
     if not (target / "_internal").is_dir():
         return False, "Unexpected install layout."
-    probe = target / ".callout-write-test"
+    probe = target / ".fragsubs-write-test"
     try:
         probe.write_text("ok")
         probe.unlink()
     except OSError:
-        return False, f"Callout can't write to {target}. Move the Callout folder somewhere you own, like Documents."
+        return False, (f"FragSubs can't write to {target}. Reinstall it with the installer from "
+                       "fragsubs.com, or move the folder somewhere you own, like Documents.")
     return True, ""
 
 
 def _get_json(url: str) -> dict:
     req = urllib.request.Request(url, headers={
         "Accept": "application/vnd.github+json",
-        "User-Agent": f"Callout/{__version__}",
+        "User-Agent": f"FragSubs/{__version__}",
     })
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.load(resp)
@@ -131,7 +135,7 @@ def updates_dir() -> Path:
 
 def download(release: Release, progress: Callable[[int, int], None] | None = None,
              cancel: threading.Event | None = None) -> Path:
-    """Download and unpack the release. Returns the folder holding the new Callout.exe."""
+    """Download and unpack the release. Returns the new program's exe."""
     progress = progress or (lambda *_: None)
     cancel = cancel or threading.Event()
     root = updates_dir()
@@ -140,10 +144,10 @@ def download(release: Release, progress: Callable[[int, int], None] | None = Non
         if old.name != "update.log":
             shutil.rmtree(old, ignore_errors=True) if old.is_dir() else old.unlink(missing_ok=True)
 
-    zip_path = root / f"Callout-{release.version}.zip"
+    zip_path = root / f"FragSubs-{release.version}.zip"
     sha = hashlib.sha256()
     done = 0
-    req = urllib.request.Request(release.url, headers={"User-Agent": f"Callout/{__version__}"})
+    req = urllib.request.Request(release.url, headers={"User-Agent": f"FragSubs/{__version__}"})
     with urllib.request.urlopen(req, timeout=60) as resp, open(zip_path, "wb") as out:
         total = int(resp.headers.get("Content-Length") or release.size or 0)
         while True:
@@ -170,13 +174,13 @@ def download(release: Release, progress: Callable[[int, int], None] | None = Non
         zf.extractall(staging)
     zip_path.unlink(missing_ok=True)
 
-    for exe in staging.rglob(EXE_NAME):
+    for exe in sorted(staging.rglob("*.exe")):
         if (exe.parent / "_internal").is_dir():
-            return exe.parent
-    raise RuntimeError("The update zip doesn't contain Callout.exe")
+            return exe
+    raise RuntimeError("The update zip doesn't contain the program")
 
 
-# Swaps program files once Callout has exited. Keeps a backup until the new
+# Swaps program files once FragSubs has exited. Keeps a backup until the new
 # files are in place and restores it if anything fails.
 UPDATE_SCRIPT = r"""
 param(
@@ -184,14 +188,16 @@ param(
     [string]$Install,
     [string]$New,
     [string]$Log,
+    [string]$ExeName = "FragSubs.exe",
+    [string]$NewExeName = "FragSubs.exe",
     [switch]$NoRestart
 )
 $ErrorActionPreference = "Stop"
 Start-Transcript -Path $Log -Force | Out-Null
 $internal = Join-Path $Install "_internal"
 $backup = Join-Path $Install "_internal.old"
-$exe = Join-Path $Install "Callout.exe"
-$exeBackup = Join-Path $Install "Callout.exe.old"
+$exe = Join-Path $Install $ExeName
+$exeBackup = "$exe.old"
 
 function Retry([scriptblock]$Action) {
     for ($i = 1; $i -le 10; $i++) {
@@ -200,7 +206,7 @@ function Retry([scriptblock]$Action) {
 }
 
 try {
-    Write-Output "Waiting for Callout (pid $AppPid) to exit"
+    Write-Output "Waiting for FragSubs (pid $AppPid) to exit"
     Wait-Process -Id $AppPid -Timeout 60 -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
 
@@ -210,7 +216,7 @@ try {
     Retry { Copy-Item $exe $exeBackup -Force }
     try {
         Retry { Copy-Item (Join-Path $New "_internal") $internal -Recurse -Force }
-        Retry { Copy-Item (Join-Path $New "Callout.exe") $exe -Force }
+        Retry { Copy-Item (Join-Path $New $NewExeName) $exe -Force }
     } catch {
         Write-Output "Update failed, restoring the previous version: $_"
         if (Test-Path $internal) { Remove-Item $internal -Recurse -Force }
@@ -225,8 +231,9 @@ try {
 } catch {
     Write-Output "Error: $_"
 } finally {
-    if (-not $NoRestart) { Start-Process -FilePath $exe }
+    # Close the log first so the restarted app can tidy its folder.
     Stop-Transcript | Out-Null
+    if (-not $NoRestart) { Start-Process -FilePath $exe }
 }
 """
 
@@ -237,9 +244,10 @@ def write_script() -> Path:
     return path
 
 
-def launch_installer(new_dir: Path) -> None:
+def launch_installer(new_exe: Path) -> None:
     """Start the swap script; the caller must quit right after."""
     script = write_script()
+    new_dir = new_exe.parent
     args = [
         "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
         "-WindowStyle", "Hidden", "-File", str(script),
@@ -247,6 +255,8 @@ def launch_installer(new_dir: Path) -> None:
         "-Install", str(install_dir()),
         "-New", str(new_dir),
         "-Log", str(updates_dir() / "update.log"),
+        "-ExeName", Path(sys.executable).name,
+        "-NewExeName", new_exe.name,
     ]
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     log.info("Launching updater: %s", " ".join(args))

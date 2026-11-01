@@ -1,4 +1,4 @@
-"""Languages Callout can translate from (all into English).
+"""Languages FragSubs can translate from (all into English).
 
 Codes are Whisper language codes. ``default`` marks the languages that are
 switched on for a fresh install; everything else can be enabled in the GUI.
