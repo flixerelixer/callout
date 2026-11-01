@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FragSubs: English subtitles for your teammates in CS2</title>
+  <meta name="description" content="FragSubs listens to your teammates' voice chat in Counter-Strike 2 and shows what they say in English, on top of the game. Russian, Polish, Turkish and 29 more languages. Free for Windows.">
+  <meta property="og:title" content="FragSubs: English subtitles for your teammates in CS2">
+  <meta property="og:description" content="Understand every callout. Live English subtitles for in-game voice chat, running on your own PC.">
+  <meta property="og:image" content="https://fragsubs.com/img/app.png">
+  <meta property="og:url" content="https://fragsubs.com/">
+  <meta name="theme-color" content="#181B21">
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="img/icon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="brand" href="#" aria-label="FragSubs home">
+        <img src="img/icon.png" alt="" width="28" height="28">
+        <span>FragSubs</span>
+      </a>
+      <nav aria-label="Main">
+        <a href="#how">How it works</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/fgmrkt/callout">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1>Understand every callout.</h1>
+          <p class="lede">FragSubs listens to your teammates in Counter-Strike&nbsp;2 and shows what they say in English, right on top of the game. Russian, Polish, Turkish and 29&nbsp;more languages.</p>
+          <div class="cta">
+            <a class="button" id="download" href="https://github.com/fgmrkt/callout/releases/latest/download/FragSubs-Setup.exe">Download for Windows</a>
+            <p class="fine" id="release-info">Free for Windows 10 and 11. Updates itself.</p>
+          </div>
+        </div>
+
+        <figure class="demo">
+          <div class="scene" role="img" aria-label="Demo: teammates' voice chat shown as English captions over the game">
+            <div class="scene-sky" aria-hidden="true"></div>
+            <div class="scene-ground" aria-hidden="true"></div>
+            <div class="crosshair" aria-hidden="true"></div>
+            <div class="voice" aria-hidden="true">
+              <span class="voice-dot"></span><span id="voice-name">Teammate</span>
+            </div>
+            <ol class="captions" id="captions" aria-hidden="true"></ol>
+          </div>
+          <figcaption class="scene-note">Live demo. Captions appear about a second after someone stops talking.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="how" id="how">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li>
+            <h3>It hears the game</h3>
+            <p>FragSubs picks up only the sound of <code>cs2.exe</code>, so music or a video in the background stays out. A voice detector cuts teammates' speech into sentences and skips gunfire and explosions.</p>
+          </li>
+          <li>
+            <h3>It works out the language</h3>
+            <p>OpenAI's Whisper speech model runs on your own graphics card. It recognises what was said and in which language, even when Russian and English are mixed in one sentence.</p>
+          </li>
+          <li>
+            <h3>You read it in English</h3>
+            <p>The translation appears in a see-through box over the game. Clicks go straight through it. If you like, the original words are shown underneath, also in Latin letters.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="details">
+      <div class="wrap details-grid">
+        <div class="shot">
+          <img src="img/app.png" width="940" height="660" loading="lazy" alt="The FragSubs window with a list of translated teammate callouts in Turkish, Russian and Polish.">
+        </div>
+        <dl class="facts">
+          <div>
+            <dt>Private</dt>
+            <dd>Everything runs on your PC. Voice chat is never uploaded and nothing you hear is saved.</dd>
+          </div>
+          <div>
+            <dt>Safe with VAC</dt>
+            <dd>FragSubs is a separate program that only listens to the game's sound. It never touches the game's memory or files.</dd>
+          </div>
+          <div>
+            <dt>Your languages</dt>
+            <dd>Tick the languages you want translated. The ones you already speak stay quiet.</dd>
+          </div>
+          <div>
+            <dt>Readable originals</dt>
+            <dd>Show what was said as Привет, as Privet, or both. Chinese gets pinyin, Korean gets romanisation.</dd>
+          </div>
+          <div>
+            <dt>Always current</dt>
+            <dd>FragSubs checks for a new version when it starts and updates itself. Your settings stay.</dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="install" id="install">
+      <div class="wrap install-grid">
+        <div>
+          <h2>Get started</h2>
+          <ol class="install-steps">
+            <li><a href="https://github.com/fgmrkt/callout/releases/latest/download/FragSubs-Setup.exe">Download the installer</a> and run it. Windows may warn that the app is new: choose <strong>More info</strong>, then <strong>Run anyway</strong>.</li>
+            <li>In Counter-Strike&nbsp;2, set <strong>Settings, Video, Display Mode</strong> to <strong>Fullscreen Windowed</strong>. Plain fullscreen hides every other window, including the captions.</li>
+            <li>Open FragSubs and click <strong>Start listening</strong>. The first time it downloads the speech model (about 3&nbsp;GB) and, for NVIDIA cards, NVIDIA's libraries (about 1.2&nbsp;GB).</li>
+            <li>Join a match. The bar at the top of FragSubs turns gold when someone talks.</li>
+          </ol>
+        </div>
+        <div class="reqs">
+          <h3>What you need</h3>
+          <ul>
+            <li>Windows 10 (version 2004 or newer) or Windows 11</li>
+            <li>An NVIDIA GeForce RTX card with about 4&nbsp;GB of free video memory, recommended</li>
+            <li>About 6&nbsp;GB of disk space for the app and the speech model</li>
+          </ul>
+          <p class="fine">No NVIDIA card? FragSubs also runs on the processor with a smaller model. It is slower and a little less accurate.</p>
+          <p class="fine"><a href="https://github.com/fgmrkt/callout/releases/latest">Other downloads and release notes</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq" id="faq">
+      <div class="wrap">
+        <h2>Questions</h2>
+        <details>
+          <summary>Does it slow down my game?</summary>
+          <p>Hardly. On a modern RTX card the speech model needs a few hundred milliseconds of GPU time per sentence, and nothing while it's quiet. Counter-Strike&nbsp;2 is mostly limited by your processor, not your graphics card.</p>
+        </details>
+        <details>
+          <summary>Can I get banned for using it?</summary>
+          <p>FragSubs doesn't inject into the game, read its memory or change its files. It reads the audio Windows already plays, like a recording app, and draws its own window on top, like Discord's overlay.</p>
+        </details>
+        <details>
+          <summary>Does it translate what I say?</summary>
+          <p>No. The game doesn't play your own voice back to you, so FragSubs only hears your teammates.</p>
+        </details>
+        <details>
+          <summary>Can it tell who is talking?</summary>
+          <p>Not in in-game voice chat. The game mixes all teammates into one sound before it reaches Windows.</p>
+        </details>
+        <details>
+          <summary>How good are the translations?</summary>
+          <p>Clear sentences come out well. Short callouts in the middle of a gunfight, bad microphones and heavy slang are harder. FragSubs skips what it can't make out instead of guessing.</p>
+        </details>
+        <details>
+          <summary>Does it work with Discord?</summary>
+          <p>Yes. In <strong>Audio &amp; model</strong>, set <strong>What to listen to</strong> to <em>Everything I hear</em>.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <p>FragSubs is free and open source. <a href="https://github.com/fgmrkt/callout">Source on GitHub</a>.</p>
+      <p class="fine">Not affiliated with Valve. Counter-Strike is a trademark of Valve Corporation.</p>
+    </div>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
