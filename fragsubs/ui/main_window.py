@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from PySide6.QtCore import QObject, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
@@ -29,8 +31,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import APP_NAME, REPO_URL, WEBSITE, __version__, audio, gpu_runtime, languages, models, paths, translit, updater
-from ..config import DEFAULT_HINT, Settings
+from .. import (APP_NAME, REPO_URL, WEBSITE, __version__, audio, callouts, gamestate, gpu_runtime, languages, models,
+               paths, translit, updater)
+from ..config import Settings
 from ..engine import Caption, Skipped
 from ..pipeline import Callbacks, Pipeline
 from . import theme
@@ -52,6 +55,7 @@ class Bridge(QObject):
     error = Signal(str)
     ready = Signal()
     task_done = Signal(str, object)
+    map_changed = Signal(str)
 
 
 def _gb(n: int) -> str:
@@ -88,6 +92,15 @@ class MainWindow(QMainWindow):
         self.bridge.error.connect(self._on_error)
         self.bridge.ready.connect(self._on_ready)
         self.bridge.task_done.connect(self._on_task_done)
+        self.bridge.map_changed.connect(lambda _name: self._refresh_map_status())
+
+        # Map detection (CS2 Game State Integration). File work runs one job
+        # at a time, off the UI thread.
+        self.game = gamestate.GameState(self.settings.gsi_token,
+                                        on_change=lambda name: self.bridge.map_changed.emit(name or ""))
+        self._gsi_jobs = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fragsubs-gsi")
+        self._gsi_files: list | None = None  # CS2 cfg files written; None = not looked yet
+        self._gsi_added_now = False
 
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self.settings.save)
         self._restart_timer = QTimer(self, singleShot=True, interval=900, timeout=self._restart_if_running)
@@ -102,6 +115,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._probe_gpu)
         QTimer.singleShot(0, self._announce_update)
         QTimer.singleShot(1500, lambda: self.check_updates(manual=False))
+        QTimer.singleShot(0, self._apply_map_detection)
+        self._map_timer = QTimer(self, interval=5000, timeout=self._refresh_map_status)
+        self._map_timer.start()
 
     # ================================================================== layout
     def _build(self) -> None:
@@ -166,6 +182,7 @@ class MainWindow(QMainWindow):
         for title, builder in [
             ("Live", self._page_live),
             ("Languages", self._page_languages),
+            ("Maps & callouts", self._page_maps),
             ("Overlay", self._page_overlay),
             ("Audio & model", self._page_audio),
             ("About", self._page_about),
@@ -402,18 +419,49 @@ class MainWindow(QMainWindow):
         self.gpu_btn.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         lay.addWidget(self.gpu_btn)
 
-        self._section(lay, "Game vocabulary")
+        lay.addStretch(1)
+        return scroll
+
+    def _page_maps(self) -> QWidget:
+        scroll, lay = self._page(
+            "Maps & callouts",
+            "FragSubs tells the speech model the callouts of the map you're playing, so names like Palace, "
+            "Banana and Heaven come out right instead of as words that sound alike.")
+        self._section(lay, "Map")
+        self.map_combo = QComboBox()
+        self.map_combo.addItem("Detect it from the game (recommended)", "auto")
+        for game_map in sorted(callouts.MAPS.values(), key=lambda m: m.name):
+            self.map_combo.addItem(game_map.name, game_map.key)
+        self.map_combo.addItem("No map (only general Counter-Strike words)", "none")
+        self.map_combo.setCurrentIndex(max(0, self.map_combo.findData(self.settings.game_map)))
+        self.map_combo.currentIndexChanged.connect(self._map_choice_changed)
+        lay.addWidget(self.map_combo)
+        self.map_status = self._note("")
+        lay.addWidget(self.map_status)
+
+        self._section(lay, "Words the speech model listens for")
+        self.map_words = self._note("")
+        self.map_words.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        lay.addWidget(self.map_words)
+
+        self._section(lay, "Extra words")
         lay.addWidget(self._note(
-            "Words that help the model spell callouts and game terms correctly. Keep it short."))
+            "Teammates' names or your team's own callouts, separated by commas. They are always included."))
         hint = QPlainTextEdit(self.settings.vocabulary_hint)
-        hint.setFixedHeight(84)
+        hint.setPlaceholderText("For example: Artyom, Kuba, our stack")
+        hint.setFixedHeight(64)
+
         hint.textChanged.connect(lambda: self._set("vocabulary_hint", hint.toPlainText()))
         lay.addWidget(hint)
-        reset_hint = QPushButton("Restore the Counter-Strike words")
-        reset_hint.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-        reset_hint.clicked.connect(lambda: hint.setPlainText(DEFAULT_HINT))
-        lay.addWidget(reset_hint)
+
+        self._section(lay, "How map detection works")
+        lay.addWidget(self._note(
+            "Counter-Strike 2 can tell other programs which map you're on through Valve's Game State "
+            "Integration, the official feature stream overlays and RGB keyboards use. FragSubs adds the file "
+            f"<b>{gamestate.CFG_NAME}</b> to the game's cfg folder and asks only for the map name. It never "
+            "reads the game's memory. Picking a map by hand, or uninstalling FragSubs, removes the file."))
         lay.addStretch(1)
+        self._refresh_map_status()
         return scroll
 
     def _page_about(self) -> QWidget:
@@ -524,6 +572,91 @@ class MainWindow(QMainWindow):
 
     def _langs_none(self) -> None:
         self._set_langs(set())
+
+    # ---------------------------------------------------------------- maps
+    def current_map(self) -> str | None:
+        """The map whose callouts to use, as the game names it. Called from
+        the speech thread before every sentence."""
+        choice = self.settings.game_map
+        if choice == "auto":
+            return self.game.map_name
+        if choice == "none":
+            return None
+        return choice
+
+    def _map_choice_changed(self) -> None:
+        self._set("game_map", self.map_combo.currentData())
+        self._apply_map_detection()
+        self._refresh_map_status()
+
+    def _apply_map_detection(self) -> None:
+        """Map detection on: listen, and put the GSI file in CS2's cfg folder.
+        Off: stop listening and take the file out again."""
+        want = self.settings.game_map == "auto"
+        if want:
+            if not self.settings.gsi_token:
+                self.settings.gsi_token = gamestate.new_token()
+                self._save_timer.start()
+            self.game.token = self.settings.gsi_token
+            self.game.start()
+            token = self.settings.gsi_token
+
+            def job():
+                return gamestate.install(token)
+        else:
+            self.game.stop()
+            job = gamestate.uninstall
+        self._gsi_files = None if want else []
+
+        def work() -> None:
+            try:
+                result = job()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Map detection setup failed: %s", exc)
+                result = exc
+            self.bridge.task_done.emit("gsi", (want, result))
+
+        self._gsi_jobs.submit(work)
+
+    def _refresh_map_status(self) -> None:
+        if not hasattr(self, "map_status"):
+            return
+        choice = self.settings.game_map
+        name = self.current_map()
+        game_map = callouts.map_for(name)
+        if choice == "auto":
+            if not self.game.listening:
+                text = (f"Map detection can't start ({self.game.error or 'unknown problem'}). "
+                        "Pick your map by hand above.")
+            elif self.game.connected:
+                if game_map:
+                    text = f"<b>Playing {game_map.name}</b>, detected from the game."
+                elif name:
+                    text = (f"Playing {html.escape(name)}. FragSubs has no callout list for this map, so it "
+                            "uses the general words.")
+                else:
+                    text = "Counter-Strike 2 is connected. The map shows up here when you join a match."
+            elif self._gsi_files is None:
+                text = "Looking for Counter-Strike 2…"
+            elif not self._gsi_files:
+                text = "Couldn't find Counter-Strike 2 on this PC. Pick your map by hand above."
+            elif self._gsi_added_now:
+                text = ("Set up. If Counter-Strike 2 is open right now, restart it once so it starts telling "
+                        "FragSubs the map.")
+            else:
+                text = "Waiting for Counter-Strike 2. Start the game and the map shows up here."
+        elif choice == "none":
+            text = "Only the general Counter-Strike words are used."
+        else:
+            text = f"Using the callouts for {game_map.name if game_map else html.escape(choice)}."
+        self.map_status.setText(text)
+        if game_map:
+            words = (f"<b>{game_map.name}:</b> {html.escape(', '.join(game_map.callouts))}. "
+                     "Plus common words like AWP, smoke, flash, molly, eco and one HP.")
+        else:
+            words = ("No map yet, so common words only: AWP, smoke, flash, molly, eco, rush, rotate, one HP, "
+                     "A site, B site, mid and more.")
+        self.map_words.setText(words)
 
     def _model_changed(self) -> None:
         self._set("model", self.model_combo.currentData(), restart=True)
@@ -667,7 +800,7 @@ class MainWindow(QMainWindow):
             error=self.bridge.error.emit,
             ready=self.bridge.ready.emit,
         )
-        self._pipeline = Pipeline(self.settings, device, cb)
+        self._pipeline = Pipeline(self.settings, device, cb, game_map=self.current_map)
         self._pipeline.start()
         self._running = True
         self.meter.set_active(True)
@@ -775,6 +908,15 @@ class MainWindow(QMainWindow):
             self.pill.set("error", "Stopped")
 
     def _on_task_done(self, name: str, result) -> None:
+        if name == "gsi":
+            want, outcome = result
+            if want == (self.settings.game_map == "auto"):
+                if want and isinstance(outcome, tuple):
+                    self._gsi_files, self._gsi_added_now = outcome
+                elif want:
+                    self._gsi_files = []
+            self._refresh_map_status()
+            return
         if name == "gpu_probe":
             self._gpu_count, self._gpu_name = result
             self._refresh_gpu_note()
@@ -916,4 +1058,6 @@ class MainWindow(QMainWindow):
         if self._pipeline is not None:
             self._pipeline.stop(timeout=1.0)
             self._pipeline = None
+        self.game.stop()
+        self._gsi_jobs.shutdown(wait=False)
         self.overlay.close()

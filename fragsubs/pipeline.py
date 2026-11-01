@@ -38,10 +38,13 @@ class Callbacks:
 
 
 class Pipeline:
-    def __init__(self, settings: Settings, device: str, callbacks: Callbacks):
+    def __init__(self, settings: Settings, device: str, callbacks: Callbacks,
+                 game_map: Callable[[], str | None] = lambda: None):
         self.settings = settings
         self.device = device
         self.cb = callbacks
+        # Called before each sentence: the map being played, for its callouts.
+        self.game_map = game_map
         self._stop = threading.Event()
         self._segments: queue.Queue[np.ndarray] = queue.Queue()
         self._threads: list[threading.Thread] = []
@@ -177,7 +180,7 @@ class Pipeline:
             except queue.Empty:
                 continue
             try:
-                caption = translator.process(segment, s)
+                caption = translator.process(segment, s, game_map=self.game_map())
             except Exception as exc:  # noqa: BLE001
                 log.exception("Translation failed")
                 self.cb.error(f"Translation failed: {exc}")

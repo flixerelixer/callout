@@ -68,6 +68,14 @@ def self_test() -> int:
         assert to_latin("Привет", "ru") == "Privet", to_latin("Привет", "ru")
         assert to_latin("你好", "zh") == "nǐ hǎo", to_latin("你好", "zh")
         assert to_latin("안녕", "ko") == "annyeong", to_latin("안녕", "ko")
+        # Map callouts and map detection.
+        from . import callouts, gamestate
+
+        for game_map in callouts.MAPS.values():
+            assert game_map.name in callouts.build_prompt(game_map), game_map.key
+        state = gamestate.GameState("t")
+        state.receive({"auth": {"token": "t"}, "map": {"name": "de_mirage"}})
+        assert callouts.map_for(state.map_name).name == "Mirage", state.map_name
         # Progress bars must not crash without a console (model download).
         from tqdm.auto import tqdm
 
@@ -96,6 +104,12 @@ def main() -> int:
 
     if "--self-test" in sys.argv:
         return self_test()
+    if "--remove-game-config" in sys.argv:
+        # Run by the uninstaller: take the map detection file out of CS2.
+        from . import gamestate
+
+        log.info("Removed %d map detection file(s)", gamestate.uninstall())
+        return 0
 
     if sys.platform == "win32":
         try:

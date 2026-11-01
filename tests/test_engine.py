@@ -50,6 +50,16 @@ def test_russian_is_translated_with_original():
     assert t.model.calls[0][2] and t.model.calls[1][2] is None
 
 
+def test_map_callouts_reach_whisper():
+    t = make([("ru", 0.95)], {"translate": (" Two Palace.", -0.2, 0.01), "transcribe": (" Двое палас.", -0.2, 0.01)})
+    t.process(AUDIO, Settings(vocabulary_hint="Artyom"), game_map="de_mirage")
+    prompt = t.model.calls[0][2]
+    assert "Mirage" in prompt and "Palace" in prompt and prompt.endswith("Artyom.")
+    t.model.calls.clear()
+    t.process(AUDIO, Settings(), game_map=None)
+    assert "Palace" not in t.model.calls[0][2] and "AWP" in t.model.calls[0][2]
+
+
 def test_english_is_skipped_by_default():
     t = make([("en", 0.9)], {"transcribe": ("Rotate A.", -0.1, 0.0)})
     skipped = t.process(AUDIO, Settings())

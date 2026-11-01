@@ -73,9 +73,31 @@ cs2.exe audio ──► voice detector ──► Whisper ───────�
   gunshots, footsteps and other game sounds before they reach Whisper.
 - **Translation**: [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
   runs OpenAI's Whisper model. It identifies the language, then translates
-  straight into English. A short list of Counter-Strike terms helps it spell
-  callouts. Known Whisper hallucinations ("Thanks for watching", subtitle
-  credits) are filtered out.
+  straight into English. The callouts of the map you're on are given to
+  Whisper as context (see below), so map positions come out spelled right.
+  Known Whisper hallucinations ("Thanks for watching", subtitle credits, an
+  echo of the callout list) are filtered out.
+
+## Map callouts
+
+Whisper takes a short text prompt it treats as what was said just before, and
+words in it come out spelled as written there. FragSubs fills it with the
+callouts of the map you're playing ("Palace", "Banana", "Heaven" instead of
+"pales", "bonanza", "heavy"), common Counter-Strike words (AWP, molly, eco,
+one HP) and your own **Extra words**, such as teammates' names. The prompt is
+limited to 223 tokens, which is why only the current map goes in.
+
+Callouts for Ancient, Anubis, Cache, Dust 2, Inferno, Mirage, Nuke, Overpass
+and Vertigo come from [totalcsgo.com/callouts](https://totalcsgo.com/callouts)
+(`fragsubs/callouts.py`).
+
+**Which map?** Under **Maps & callouts**, FragSubs detects the map through
+Valve's Game State Integration (GSI): it writes
+`gamestate_integration_fragsubs.cfg` into CS2's `game\csgo\cfg` folder, and the
+game then posts the map name to `http://127.0.0.1:31975/` (data requested: the
+map only). If CS2 was open when the file was first added, restart it once.
+You can also pick the map by hand, which removes the file; uninstalling
+FragSubs removes it too.
 
 ## Reading the original words
 
@@ -90,9 +112,10 @@ Hindi. Japanese kana become romaji; kanji stay as they are.
 - Audio never leaves your computer, and nothing you hear is saved to disk.
   The log file only contains technical messages. The only network traffic is
   the one-time downloads above and the update check against GitHub.
-- FragSubs is a separate program. It only reads the sound the game plays; it
-  never touches the game's memory or files and doesn't inject anything, so it
-  is safe with VAC.
+- FragSubs is a separate program. It reads the sound the game plays and
+  never touches the game's memory or injects anything, so it is safe with
+  VAC. The only file it adds to the game folder is the Game State Integration
+  config above, Valve's official interface for overlays and RGB lighting.
 
 ## Limitations
 

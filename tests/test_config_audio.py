@@ -50,6 +50,18 @@ def test_old_sentence_timing_is_migrated(tmp_path):
     assert Settings.load(path).end_silence_ms == 800  # chosen on purpose
 
 
+def test_old_vocabulary_box_becomes_extra_words(tmp_path):
+    from fragsubs.config import LEGACY_HINT
+
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"vocabulary_hint": LEGACY_HINT, "settings_version": 3}))
+    s = Settings.load(path)
+    assert s.vocabulary_hint == "" and s.game_map == "auto"
+    # Words someone typed themselves stay.
+    path.write_text(json.dumps({"vocabulary_hint": "Artyom, Kuba", "settings_version": 3}))
+    assert Settings.load(path).vocabulary_hint == "Artyom, Kuba"
+
+
 def test_corrupt_file_gives_defaults(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not json")

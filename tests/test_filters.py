@@ -81,6 +81,23 @@ def test_hint_echo_is_dropped():
     assert is_hallucination("A site, B site, mid, AWP, smoke.", hint=hint)
 
 
+MIRAGE = ("Counter-Strike 2 team voice chat on Mirage. Callouts: Mid, B Site, A Site, T Spawn, T Roof, "
+          "A Ramp, Palace, Pillars, Balcony, Shadows, Tetris, Sandwich, Stairs, Firebox, Ninja, CT. "
+          "Also: AWP, smoke, flash, molly, HE, eco, force buy, rush, plant, defuse, rotate, push, one HP.")
+
+
+def test_map_prompt_echo_is_dropped():
+    assert is_hallucination("Palace, Pillars, Balcony, Shadows.", hint=MIRAGE)
+    assert is_hallucination("Counter-Strike 2 team voice chat on Mirage.", hint=MIRAGE)
+    assert is_hallucination("Callouts: Mid, B Site.", hint=MIRAGE)
+
+
+def test_real_callouts_made_of_prompt_words_survive():
+    for said in ["Rotate B, B site, push mid", "Palace, one HP, AWP", "Smoke Firebox, flash Palace",
+                 "Two Palace, one Ramp", "Push A, plant, rotate", "Tetris, Sandwich, rush"]:
+        assert not is_hallucination(said, hint=MIRAGE), said
+
+
 def test_clean_text_strips_sound_tags():
     assert clean_text(" - [Music] Plant the bomb (gunshots) ") == "Plant the bomb"
 

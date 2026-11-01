@@ -54,6 +54,10 @@ Name: "{autodesktop}\FragSubs"; Filename: "{app}\FragSubs.exe"; Tasks: desktopic
 [Run]
 Filename: "{app}\FragSubs.exe"; Description: "Start FragSubs"; Flags: nowait postinstall skipifsilent
 
+[UninstallRun]
+; Take the map detection file (Game State Integration) out of Counter-Strike 2's cfg folder.
+Filename: "{app}\FragSubs.exe"; Parameters: "--remove-game-config"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveGameConfig"
+
 [UninstallDelete]
 ; Files the self-updater may leave next to the program.
 Type: filesandordirs; Name: "{app}\_internal.old"

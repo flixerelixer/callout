@@ -11,7 +11,9 @@ from . import languages, paths
 
 log = logging.getLogger(__name__)
 
-DEFAULT_HINT = (
+# What the vocabulary box held by default up to 0.2.x. The Counter-Strike
+# words are built in now (see callouts.py), and the box is for extra words.
+LEGACY_HINT = (
     "Counter-Strike team voice chat. Callouts: A site, B site, mid, long, short, "
     "ramp, CT, T spawn, AWP, smoke, flash, molotov, HE grenade, rush, eco, "
     "force buy, plant, defuse, bomb, retake, rotate, push, hold, one HP, lit."
@@ -43,7 +45,14 @@ class Settings:
     # How to write the original words: "native" (Привет), "latin" (Privet) or "both".
     original_script: str = "native"
     min_language_confidence: float = 0.45
-    vocabulary_hint: str = DEFAULT_HINT
+    # Extra words for the speech model (teammates' names, your own callouts),
+    # added to the built-in Counter-Strike words.
+    vocabulary_hint: str = ""
+    # Which map's callouts to use: "auto" (ask the game), "none", or a map
+    # key such as "de_mirage".
+    game_map: str = "auto"
+    # Shared secret in the game's GSI file, so only CS2 can set the map.
+    gsi_token: str = ""
 
     # --- overlay ---------------------------------------------------------
     overlay_enabled: bool = True
@@ -62,7 +71,7 @@ class Settings:
     auto_update: bool = True
     last_version: str = ""  # used to say "Callout was updated" once
     show_skipped: bool = False  # list heard-but-skipped speech in the Live log
-    settings_version: int = 3
+    settings_version: int = 4
 
     def enabled_languages(self) -> set[str]:
         return {code for code in self.languages if code in languages.BY_CODE}
@@ -93,6 +102,11 @@ class Settings:
                 data["end_silence_ms"] = settings.end_silence_ms
             if data.get("max_segment_s") == 12.0:
                 data["max_segment_s"] = settings.max_segment_s
+        # v3 kept the Counter-Strike words in the vocabulary box. They are
+        # built in now; an unchanged box becomes empty (extra words only).
+        if version < 4:
+            if " ".join(str(data.get("vocabulary_hint", "")).split()) == " ".join(LEGACY_HINT.split()):
+                data["vocabulary_hint"] = ""
         data["settings_version"] = settings.settings_version
         for f in fields(cls):
             if f.name not in data:

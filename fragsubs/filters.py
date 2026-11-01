@@ -89,12 +89,44 @@ def is_hallucination(text: str, *, avg_logprob: float = 0.0, no_speech_prob: flo
     # Looping output ("go go go go go go go go go ...") beyond normal shouting.
     if len(words) >= 10 and len(set(words)) / len(words) < 0.2:
         return True
-    # Echo of the vocabulary hint, which Whisper sometimes reads back on noise.
-    if hint and len(words) >= 4:
-        hint_words = set(normalize(hint).split())
-        if sum(w in hint_words for w in words) / len(words) > 0.85:
-            return True
+    if hint and is_prompt_echo(words, hint):
+        return True
     return False
+
+
+def _longest_shared_run(a: list[str], b: list[str]) -> int:
+    """Length of the longest stretch of words that appears, in the same
+    order and without gaps, in both lists."""
+    best = 0
+    prev = [0] * (len(b) + 1)
+    for x in a:
+        cur = [0] * (len(b) + 1)
+        for j, y in enumerate(b, 1):
+            if x == y:
+                cur[j] = prev[j - 1] + 1
+                best = max(best, cur[j])
+        prev = cur
+    return best
+
+
+def is_prompt_echo(words: list[str] | str, prompt: str) -> bool:
+    """Whisper reading its vocabulary prompt back on noise ("Palace, Pillars,
+    Balcony, Shadows."). Real callouts use the same words, but not several of
+    them in a row in the prompt's own order, so "Rotate B, B site, push mid"
+    is kept."""
+    if isinstance(words, str):
+        words = normalize(words).split()
+    norm = " ".join(words)
+    if not words or not prompt:
+        return False
+    if "team voice chat" in norm or norm.startswith("callouts") or "callouts and words" in norm:
+        return True
+    prompt_words = normalize(prompt).split()
+    known = set(prompt_words)
+    if sum(w in known for w in words) / len(words) < 0.85:
+        return False
+    run = _longest_shared_run(words, prompt_words)
+    return run >= 4 and run >= 0.6 * len(words)
 
 
 def choose_language(

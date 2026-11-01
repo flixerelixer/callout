@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import filters, languages
+from . import callouts, filters, languages
 from .config import Settings
 
 log = logging.getLogger(__name__)
@@ -117,6 +117,26 @@ class Translator:
         avg = float(np.mean(logprobs)) if logprobs else -10.0
         return Decoded(text, avg, no_speech)
 
+    def _count_tokens(self, text: str) -> int:
+        tokenizer = getattr(getattr(self, "model", None), "hf_tokenizer", None)
+        if tokenizer is None:
+            return callouts.estimate_tokens(text)
+        # The same encoding faster-whisper uses for initial_prompt.
+        return len(tokenizer.encode(" " + text.strip(), add_special_tokens=False).ids)
+
+    def prompt_for(self, settings: Settings, game_map: str | None) -> str:
+        """The vocabulary prompt: callouts of this map, common Counter-Strike
+        words and the person's extra words, within Whisper's prompt limit."""
+        key = (game_map, settings.vocabulary_hint)
+        cached = getattr(self, "_prompt_cache", None)
+        if cached and cached[0] == key:
+            return cached[1]
+        text = callouts.build_prompt(callouts.map_for(game_map), settings.vocabulary_hint,
+                                     count=self._count_tokens)
+        self._prompt_cache = (key, text)
+        log.debug("Vocabulary prompt (%d tokens): %s", self._count_tokens(text), text)
+        return text
+
     RECENT_S = 180.0
     RECENT_BONUS = 0.1
 
@@ -160,11 +180,13 @@ class Translator:
             return "", out, candidates
         return lang, out, candidates
 
-    def process(self, audio: np.ndarray, settings: Settings) -> Caption | Skipped:
+    def process(self, audio: np.ndarray, settings: Settings, game_map: str | None = None) -> Caption | Skipped:
+        """game_map: the map being played as the game names it ("de_mirage"),
+        so its callouts can be given to Whisper; None for general words."""
         t0 = time.perf_counter()
         duration = len(audio) / SAMPLE_RATE
         enabled = settings.enabled_languages()
-        hint = settings.vocabulary_hint.strip()
+        hint = self.prompt_for(settings, game_map)
 
         def skip(reason: str, language: str = "", log_reason: str = "") -> Skipped:
             # The log gets the reason without anything that was said.
