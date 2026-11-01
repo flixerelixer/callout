@@ -36,10 +36,18 @@ def test_one_sentence_is_one_segment():
     assert 2.0 <= dur <= 2.7
 
 
-def test_short_blip_is_ignored():
-    mask = [0.0] * 20 + [0.9] * 5 + [0.0] * 40  # 160 ms "speech", e.g. a gunshot
-    out, _ = run(mask)
+def test_short_blip_is_ignored_but_reported():
+    mask = [0.0] * 20 + [0.9] * 4 + [0.0] * 40  # 128 ms "speech", e.g. a gunshot
+    out, seg = run(mask)
     assert out == []
+    assert len(seg.short_drops) == 1 and 0.1 < seg.short_drops[0] < 0.15
+
+
+def test_short_greeting_is_kept():
+    # "привет": about 0.3 s of clearly voiced frames
+    mask = [0.0] * 20 + [0.2, 0.6] + [0.9] * 8 + [0.5, 0.2] + [0.0] * 40
+    out, seg = run(mask)
+    assert len(out) == 1 and seg.short_drops == []
 
 
 def test_brief_dip_does_not_split_sentence():

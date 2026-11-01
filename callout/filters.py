@@ -98,17 +98,26 @@ def is_hallucination(text: str, *, avg_logprob: float = 0.0, no_speech_prob: flo
 
 def choose_language(
     probs: Iterable[tuple[str, float]],
+    enabled: set[str] | None = None,
     *,
     min_confidence: float = 0.45,
     min_coverage: float = 0.25,
-) -> tuple[str | None, float]:
+    enabled_mass: float = 0.7,
+) -> tuple[str | None, float, str]:
     """Pick the spoken language from Whisper's language probabilities.
 
     Only languages Callout knows about (plus English) are considered, with
     close relatives folded together (Belarusian counts as Russian, etc.), and
-    the result is renormalised over that set. Returns (code, confidence);
-    code is None when nothing is convincing. Callers decide what to do with
-    English or with a listed-but-switched-off language.
+    the result is renormalised over that set.
+
+    Short clips like "привет" often split the vote between related languages
+    (Russian 40%, Ukrainian 30%, Bulgarian 10%). If the top guess is a
+    language you translate and the languages you translate hold most of the
+    vote together, the top guess is accepted even below ``min_confidence``:
+    translating Ukrainian as if it were Russian still gives good English.
+
+    Returns (code or None, confidence, best guess). Callers decide what to do
+    with English or with a listed-but-switched-off language.
     """
     agg: dict[str, float] = defaultdict(float)
     for code, p in probs:
@@ -117,12 +126,16 @@ def choose_language(
             agg[code] += float(p)
     total = sum(agg.values())
     if total < min_coverage:
-        return None, 0.0
+        return None, 0.0, ""
     best = max(agg, key=agg.__getitem__)
     conf = agg[best] / total
-    if conf < min_confidence:
-        return None, conf
-    return best, conf
+    if conf >= min_confidence:
+        return best, conf, best
+    if enabled and best in enabled:
+        mass = sum(v for k, v in agg.items() if k in enabled) / total
+        if mass >= enabled_mass:
+            return best, conf, best
+    return None, conf, best
 
 
 def looks_untranslated(text: str) -> bool:

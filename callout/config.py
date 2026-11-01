@@ -29,7 +29,7 @@ class Settings:
     output_device: str = ""
     # Silero VAD speech probability threshold (lower = more sensitive).
     vad_threshold: float = 0.5
-    min_speech_ms: int = 400
+    min_speech_ms: int = 200
     end_silence_ms: int = 550
     max_segment_s: float = 12.0
 
@@ -58,6 +58,8 @@ class Settings:
     minimize_to_tray: bool = True
     auto_update: bool = True
     last_version: str = ""  # used to say "Callout was updated" once
+    show_skipped: bool = False  # list heard-but-skipped speech in the Live log
+    settings_version: int = 2
 
     def enabled_languages(self) -> set[str]:
         return {code for code in self.languages if code in languages.BY_CODE}
@@ -76,6 +78,12 @@ class Settings:
             return settings
         if not isinstance(data, dict):
             return settings
+        # v1 (Callout 0.1.0/0.1.1) needed 0.4 s of speech, which dropped short
+        # greetings like "привет". Move people still on that default.
+        if data.get("settings_version", 1) < 2:
+            if data.get("min_speech_ms") == 400:
+                data["min_speech_ms"] = settings.min_speech_ms
+            data["settings_version"] = 2
         for f in fields(cls):
             if f.name not in data:
                 continue

@@ -61,7 +61,7 @@ class SileroVAD:
 @dataclass
 class SegmenterConfig:
     threshold: float = 0.5
-    min_speech_ms: int = 400
+    min_speech_ms: int = 200
     end_silence_ms: int = 550
     max_segment_s: float = 12.0
     pre_roll_ms: int = 250
@@ -93,6 +93,9 @@ class Segmenter:
         self._silence_run = 0
         self.in_speech = False
         self.last_prob = 0.0
+        # Seconds of speech in segments dropped for being too short, so the
+        # app can show them as skipped. The caller empties this list.
+        self.short_drops: list[float] = []
 
     def feed(self, audio: np.ndarray) -> list[np.ndarray]:
         """Add audio; return any segments that just finished."""
@@ -145,12 +148,15 @@ class Segmenter:
 
     def _finish(self, keep_frames: int) -> np.ndarray | None:
         frames = self._frames[: max(1, keep_frames)]
-        enough = self._speech_frames >= self._min_speech
+        speech_frames = self._speech_frames
+        enough = speech_frames >= self._min_speech
         self._frames = []
         self._speech_frames = 0
         self._silence_run = 0
         self.in_speech = False
         if not enough:
+            if speech_frames >= 3:  # ignore single clicks and shots
+                self.short_drops.append(speech_frames * FRAME / SAMPLE_RATE)
             return None
         return np.concatenate(frames)
 

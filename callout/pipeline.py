@@ -17,7 +17,7 @@ import numpy as np
 
 from . import gpu_runtime, models
 from .config import Settings
-from .engine import Caption
+from .engine import Caption, Skipped
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class Callbacks:
     status: Callable[[str], None]  # short human-readable state
     source: Callable[[str], None]  # what is being captured
     caption: Callable[[Caption], None]
+    skipped: Callable[[Skipped], None]  # heard but not shown, with the reason
     level: Callable[[float, float, bool], None]  # level dBFS, speech prob, in speech
     progress: Callable[[str, int, int], None]  # label, done, total (downloads)
     error: Callable[[str], None]
@@ -108,6 +109,10 @@ class Pipeline:
                     finished = []
                 for segment in finished:
                     self._enqueue(segment)
+                for seconds in seg.short_drops:
+                    log.info("Skipped %.1fs of speech: too short", seconds)
+                    self.cb.skipped(Skipped(f"too short ({seconds:.1f} s of speech)", seconds))
+                seg.short_drops.clear()
                 if now - last_level >= 0.1:
                     last_level = now
                     audio = np.concatenate(recent) if recent else np.zeros(1, dtype=np.float32)
@@ -176,7 +181,9 @@ class Pipeline:
                 log.exception("Translation failed")
                 self.cb.error(f"Translation failed: {exc}")
                 continue
-            if caption is not None:
+            if isinstance(caption, Skipped):
+                self.cb.skipped(caption)
+            elif caption is not None:
                 # Debug level on purpose: what teammates say is not written to
                 # the log file unless debug logging is switched on.
                 log.debug("[%s %.0f%% %.0fms] %s | %s", caption.language, caption.confidence * 100,

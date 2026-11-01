@@ -28,6 +28,19 @@ def test_bad_values_fall_back_to_defaults(tmp_path):
     assert s.max_lines == 6
 
 
+def test_old_minimum_speech_length_is_migrated(tmp_path):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"min_speech_ms": 400, "font_size": 24}))
+    s = Settings.load(path)
+    assert s.min_speech_ms == 200 and s.font_size == 24
+    # A value the user picked on purpose stays.
+    path.write_text(json.dumps({"min_speech_ms": 600}))
+    assert Settings.load(path).min_speech_ms == 600
+    # Once migrated, 400 is respected as a deliberate choice.
+    path.write_text(json.dumps({"min_speech_ms": 400, "settings_version": 2}))
+    assert Settings.load(path).min_speech_ms == 400
+
+
 def test_corrupt_file_gives_defaults(tmp_path):
     path = tmp_path / "settings.json"
     path.write_text("{not json")

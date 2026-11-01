@@ -6,28 +6,42 @@ def probs(**kw):
 
 
 def test_clear_russian():
-    lang, conf = choose_language(probs(ru=0.92, uk=0.04, en=0.02))
+    lang, conf, _ = choose_language(probs(ru=0.92, uk=0.04, en=0.02))
     assert lang == "ru" and conf > 0.9
 
 
 def test_belarusian_counts_as_russian():
-    lang, _ = choose_language(probs(be=0.45, ru=0.35, en=0.05))
+    lang, _, _ = choose_language(probs(be=0.45, ru=0.35, en=0.05))
     assert lang == "ru"
 
 
 def test_unlisted_language_is_ignored():
     # Mostly Persian, which Callout does not list: too little coverage.
-    lang, _ = choose_language(probs(fa=0.9, ar=0.05, en=0.02))
+    lang, _, _ = choose_language(probs(fa=0.9, ar=0.05, en=0.02))
     assert lang is None
 
 
 def test_unsure_returns_none():
-    lang, conf = choose_language(probs(de=0.3, nl=0.3, en=0.3))
-    assert lang is None and conf < 0.45
+    lang, conf, guess = choose_language(probs(de=0.3, nl=0.3, en=0.3))
+    assert lang is None and conf < 0.45 and guess in ("de", "nl", "en")
+
+
+def test_short_greeting_with_split_slavic_vote_is_accepted():
+    # "привет": Whisper splits the vote between related languages.
+    vote = probs(ru=0.40, uk=0.30, bg=0.12, en=0.08, pl=0.05)
+    assert choose_language(vote)[0] is None  # no enabled list: too unsure
+    lang, conf, _ = choose_language(vote, {"ru", "uk", "pl"})
+    assert lang == "ru" and conf < 0.45
+
+
+def test_split_vote_with_english_is_not_forced():
+    # Russian barely ahead of English: not enough agreement to force it.
+    vote = probs(ru=0.36, en=0.34, uk=0.10, pl=0.05)
+    assert choose_language(vote, {"ru", "uk", "pl"})[0] is None
 
 
 def test_english_is_reported_as_english():
-    lang, _ = choose_language(probs(en=0.8, de=0.1))
+    lang, _, _ = choose_language(probs(en=0.8, de=0.1))
     assert lang == "en"
 
 

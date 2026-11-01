@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from callout.config import Settings
-from callout.engine import Translator
+from callout.engine import Caption, Skipped, Translator
 
 
 class FakeModel:
@@ -52,24 +52,41 @@ def test_russian_is_translated_with_original():
 
 def test_english_is_skipped_by_default():
     t = make([("en", 0.9)], {"transcribe": ("Rotate A.", -0.1, 0.0)})
-    assert t.process(AUDIO, Settings()) is None
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and "English" in skipped.reason
     s = Settings(show_english=True)
     cap = t.process(AUDIO, s)
-    assert cap is not None and cap.text == "Rotate A." and cap.original == ""
+    assert isinstance(cap, Caption) and cap.text == "Rotate A." and cap.original == ""
 
 
 def test_switched_off_language_is_skipped():
     t = make([("nl", 0.9)], {"translate": ("Hello", -0.1, 0.0), "transcribe": ("Hallo", -0.1, 0.0)})
-    assert t.process(AUDIO, Settings()) is None  # Dutch is off by default
-    assert t.process(AUDIO, Settings(languages=["nl"])) is not None
+    skipped = t.process(AUDIO, Settings())  # Dutch is off by default
+    assert isinstance(skipped, Skipped) and "Dutch is switched off" in skipped.reason
+    assert isinstance(t.process(AUDIO, Settings(languages=["nl"])), Caption)
 
 
 def test_hallucination_is_dropped():
     t = make([("ru", 0.9)], {"translate": ("Thanks for watching!", -0.3, 0.1),
                              "transcribe": ("Продолжение следует...", -0.3, 0.1)})
-    assert t.process(AUDIO, Settings()) is None
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and "noise" in skipped.reason
 
 
 def test_low_confidence_output_is_dropped():
     t = make([("de", 0.9)], {"translate": ("Something garbled", -1.5, 0.1)})
-    assert t.process(AUDIO, Settings()) is None
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and "unclear" in skipped.reason
+
+
+def test_greeting_with_split_vote_is_translated():
+    t = make([("ru", 0.40), ("uk", 0.30), ("bg", 0.12), ("en", 0.08)],
+             {"translate": ("Hi!", -0.3, 0.05), "transcribe": ("Привет!", -0.3, 0.05)})
+    cap = t.process(np.zeros(8000, dtype=np.float32), Settings())
+    assert isinstance(cap, Caption) and cap.text == "Hi!" and cap.language == "ru"
+
+
+def test_unclear_language_reason_names_the_guess():
+    t = make([("de", 0.3), ("nl", 0.3), ("en", 0.3)], {})
+    skipped = t.process(AUDIO, Settings())
+    assert isinstance(skipped, Skipped) and "best guess" in skipped.reason

@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths, updater
 from ..config import DEFAULT_HINT, Settings
-from ..engine import Caption
+from ..engine import Caption, Skipped
 from ..pipeline import Callbacks, Pipeline
 from . import theme
 from .overlay import Overlay
@@ -46,6 +46,7 @@ class Bridge(QObject):
     status = Signal(str)
     source = Signal(str)
     caption = Signal(object)
+    skipped = Signal(object)
     level = Signal(float, float, bool)
     progress = Signal(str, int, int)
     error = Signal(str)
@@ -81,6 +82,7 @@ class MainWindow(QMainWindow):
         self.bridge.status.connect(self._on_status)
         self.bridge.source.connect(self._on_source)
         self.bridge.caption.connect(self._on_caption)
+        self.bridge.skipped.connect(self._on_skipped)
         self.bridge.level.connect(self._on_level)
         self.bridge.progress.connect(self._on_progress)
         self.bridge.error.connect(self._on_error)
@@ -223,6 +225,10 @@ class MainWindow(QMainWindow):
         lay.addLayout(top)
         self.log = CaptionLog()
         lay.addWidget(self.log, 1)
+        skipped = QCheckBox("Also list speech that was heard but skipped, with the reason")
+        skipped.setChecked(self.settings.show_skipped)
+        skipped.toggled.connect(lambda on: self._set("show_skipped", on))
+        lay.addWidget(skipped)
         return page
 
     def _page_languages(self) -> QWidget:
@@ -631,6 +637,7 @@ class MainWindow(QMainWindow):
             status=self.bridge.status.emit,
             source=self.bridge.source.emit,
             caption=self.bridge.caption.emit,
+            skipped=self.bridge.skipped.emit,
             level=self.bridge.level.emit,
             progress=self.bridge.progress.emit,
             error=self.bridge.error.emit,
@@ -718,6 +725,10 @@ class MainWindow(QMainWindow):
     def _on_caption(self, caption: Caption) -> None:
         self.log.add(caption)
         self.overlay.add_caption(caption)
+
+    def _on_skipped(self, item: Skipped) -> None:
+        if self.settings.show_skipped:
+            self.log.add(item)
 
     def _on_progress(self, label: str, done: int, total: int) -> None:
         if not self.notice.isVisible() or not self.progress.isVisible():

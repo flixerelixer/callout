@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import filters
+from . import filters, languages
 from .config import Settings
 
 log = logging.getLogger(__name__)
@@ -24,6 +24,16 @@ class Caption:
     confidence: float = 0.0
     duration_s: float = 0.0
     latency_ms: float = 0.0
+    created: float = field(default_factory=time.time)
+
+
+@dataclass
+class Skipped:
+    """Speech that was heard but not shown, and why (for the Live log)."""
+
+    reason: str
+    duration_s: float = 0.0
+    language: str = ""
     created: float = field(default_factory=time.time)
 
 
@@ -91,25 +101,33 @@ class Translator:
         avg = float(np.mean(logprobs)) if logprobs else -10.0
         return Decoded(text, avg, no_speech)
 
-    def process(self, audio: np.ndarray, settings: Settings) -> Caption | None:
+    def process(self, audio: np.ndarray, settings: Settings) -> Caption | Skipped:
         t0 = time.perf_counter()
         duration = len(audio) / SAMPLE_RATE
+        enabled = settings.enabled_languages()
+
+        def skip(reason: str, language: str = "", log_reason: str = "") -> Skipped:
+            # The log gets the reason without anything that was said.
+            log.info("Skipped %.1fs of speech: %s", duration, log_reason or reason)
+            return Skipped(reason, duration, language)
+
         _lang, _p, all_probs = self.model.detect_language(audio)
-        language, confidence = filters.choose_language(
-            all_probs, min_confidence=settings.min_language_confidence
+        language, confidence, guess = filters.choose_language(
+            all_probs, enabled, min_confidence=settings.min_language_confidence
         )
         if language is None:
-            log.debug("Skipped %.1fs clip: language unclear", duration)
-            return None
+            if guess:
+                return skip(f"couldn't tell the language (best guess {languages.display_name(guess)}, "
+                            f"{confidence:.0%} sure)", guess)
+            return skip("couldn't tell the language")
         if language == "en":
             if not settings.show_english:
-                return None
+                return skip("English (captioning English is off)", "en")
             task = "transcribe"
-        elif language in settings.enabled_languages():
+        elif language in enabled:
             task = "translate"
         else:
-            log.debug("Skipped %.1fs clip in %s (switched off)", duration, language)
-            return None
+            return skip(f"{languages.display_name(language)} is switched off under Languages", language)
 
         hint = settings.vocabulary_hint.strip()
         english = self._decode(audio, language, task, hint)
@@ -119,16 +137,16 @@ class Translator:
             log.debug("Untranslated output %r; retrying", english.text)
             english = self._decode(audio, language, task, hint, temperature=(0.3, 0.6))
             if filters.looks_untranslated(english.text):
-                return None
-        if not english.text or filters.is_hallucination(
+                return skip("Whisper didn't translate it", language)
+        if not english.text:
+            return skip("no words recognised", language)
+        if filters.is_hallucination(
             english.text, avg_logprob=english.avg_logprob,
             no_speech_prob=english.no_speech_prob, hint=hint,
         ):
-            log.debug("Dropped likely hallucination: %r", english.text)
-            return None
+            return skip(f"ignored “{english.text}” as likely noise", language, "likely noise")
         if english.avg_logprob < -1.2:
-            log.debug("Dropped low-confidence output: %r (%.2f)", english.text, english.avg_logprob)
-            return None
+            return skip(f"too unclear to translate (heard “{english.text}”)", language, "too unclear")
 
         original = ""
         if settings.show_original and language != "en":

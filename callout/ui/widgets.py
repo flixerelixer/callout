@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..engine import Caption
+from ..engine import Caption, Skipped
 from . import theme
 
 
@@ -181,6 +181,25 @@ class _Entry(QFrame):
         row.addLayout(texts, 1)
 
 
+class _SkippedEntry(QFrame):
+    def __init__(self, item: Skipped, parent=None):
+        super().__init__(parent)
+        self.setObjectName("entry")
+        self.setStyleSheet(f"QFrame#entry {{ border-bottom: 1px solid {theme.LINE}; }}")
+        row = QHBoxLayout(self)
+        row.setContentsMargins(4, 6, 4, 6)
+        row.setSpacing(12)
+        when = QLabel(time.strftime("%H:%M:%S", time.localtime(item.created)))
+        when.setFixedWidth(64)
+        when.setStyleSheet(f"color: {theme.MUTED}; font-size: 12px;")
+        row.addWidget(when)
+        text = QLabel(f"Skipped: {item.reason}")
+        text.setWordWrap(True)
+        text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        text.setStyleSheet(f"color: {theme.MUTED}; font-size: 13px;")
+        row.addWidget(text, 1)
+
+
 class CaptionLog(QScrollArea):
     """Newest-first list of everything that was translated this session.
     Kept in memory only."""
@@ -207,9 +226,10 @@ class CaptionLog(QScrollArea):
         self._layout.addStretch(1)
         self.setWidget(inner)
 
-    def add(self, caption: Caption) -> None:
+    def add(self, caption: Caption | Skipped) -> None:
         self._empty.hide()
-        self._layout.insertWidget(0, _Entry(caption))
+        entry = _SkippedEntry(caption) if isinstance(caption, Skipped) else _Entry(caption)
+        self._layout.insertWidget(0, entry)
         # layout = entries + empty label + stretch
         while self._layout.count() - 2 > self.MAX_ENTRIES:
             item = self._layout.takeAt(self._layout.count() - 3)
