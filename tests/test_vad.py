@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from callout.vad import FRAME, SAMPLE_RATE, Segmenter, SegmenterConfig
+from fragsubs.vad import FRAME, SAMPLE_RATE, Segmenter, SegmenterConfig
 
 
 def stub_from_mask(mask):
@@ -82,7 +82,7 @@ def test_streaming_silero_matches_batch():
     pytest.importorskip("onnxruntime")
     from faster_whisper.vad import get_vad_model
 
-    from callout.vad import SileroVAD
+    from fragsubs.vad import SileroVAD
 
     rng = np.random.default_rng(1)
     t = np.arange(SAMPLE_RATE * 3) / SAMPLE_RATE
@@ -154,7 +154,7 @@ def _voice(seconds):
 
 
 def test_bang_filter_flags_gunfire_but_not_voice():
-    from callout.vad import BangFilter
+    from fragsubs.vad import BangFilter
 
     gun = _gunfire(2)
     flags = BangFilter()(gun[: len(gun) // FRAME * FRAME].reshape(-1, FRAME))

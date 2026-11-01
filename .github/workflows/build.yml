@@ -35,10 +35,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $v = python -c "import callout; print(callout.__version__)"
+          $v = python -c "import fragsubs; print(fragsubs.__version__)"
           $publish = "false"
           if ("${{ github.ref_type }}" -eq "tag") {
-            if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $v in callout/__init__.py" }
+            if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $v in fragsubs/__init__.py" }
             $publish = "true"
           } elseif ("${{ github.event_name }}" -eq "push" -and "${{ github.ref_name }}" -eq "main") {
             gh release view "v$v" --repo "${{ github.repository }}" 2>&1 | Out-Null
@@ -55,14 +55,14 @@ jobs:
         run: python -m pytest -q
 
       - name: Build the app
-        run: pyinstaller callout.spec --noconfirm
+        run: pyinstaller fragsubs.spec --noconfirm
 
       - name: Smoke-test the packaged app
         shell: pwsh
         run: |
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-home"
+          $env:FRAGSUBS_HOME = "$env:RUNNER_TEMP\fragsubs-home"
           $p = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -ArgumentList "--self-test" -Wait -PassThru
-          Get-Content "$env:CALLOUT_HOME\logs\callout.log" -ErrorAction SilentlyContinue
+          Get-Content "$env:FRAGSUBS_HOME\logs\fragsubs.log" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
 
       # Copies installed before the rename run as Callout.exe; the updater must
@@ -77,7 +77,7 @@ jobs:
           New-Item -ItemType Directory -Force "$t\new" | Out-Null
           Copy-Item dist\FragSubs "$t\new\FragSubs" -Recurse
           "new version" | Out-File "$t\new\FragSubs\_internal\marker.txt"
-          python -c "import sys; from callout.updater import UPDATE_SCRIPT; open(sys.argv[1], 'w', encoding='utf-8').write(UPDATE_SCRIPT)" "$t\apply.ps1"
+          python -c "import sys; from fragsubs.updater import UPDATE_SCRIPT; open(sys.argv[1], 'w', encoding='utf-8').write(UPDATE_SCRIPT)" "$t\apply.ps1"
           $app = Start-Process -FilePath powershell -ArgumentList "-NoProfile","-Command","Start-Sleep 3" -WindowStyle Hidden -PassThru
           powershell -NoProfile -ExecutionPolicy Bypass -File "$t\apply.ps1" -AppPid $app.Id -Install "$t\install" -New "$t\new\FragSubs" -Log "$t\update.log" -ExeName "Callout.exe" -NewExeName "FragSubs.exe" -NoRestart
           Get-Content "$t\update.log"
@@ -85,15 +85,15 @@ jobs:
           if (Test-Path "$t\install\_internal.old") { throw "The backup was not cleaned up" }
           if (-not (Test-Path "$t\install\Callout.exe")) { throw "Callout.exe is missing after the update" }
           if (Test-Path "$t\install\FragSubs.exe") { throw "The updater added a second exe" }
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-home2"
+          $env:FRAGSUBS_HOME = "$env:RUNNER_TEMP\fragsubs-home2"
           $p = Start-Process -FilePath "$t\install\Callout.exe" -ArgumentList "--self-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "The updated program doesn't start (exit $($p.ExitCode))" }
 
       - name: Test that a second launch just shows the first
         shell: pwsh
         run: |
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-single"
-          $log = "$env:CALLOUT_HOME\logs\callout.log"
+          $env:FRAGSUBS_HOME = "$env:RUNNER_TEMP\fragsubs-single"
+          $log = "$env:FRAGSUBS_HOME\logs\fragsubs.log"
           $first = Start-Process -FilePath "dist\FragSubs\FragSubs.exe" -PassThru
           Start-Sleep -Seconds 10
           if ($first.HasExited) { Get-Content $log -ErrorAction SilentlyContinue; throw "The first instance exited on its own" }
@@ -121,7 +121,7 @@ jobs:
           if ($setup.ExitCode -ne 0) { throw "Setup failed with exit code $($setup.ExitCode)" }
           $app = "$env:LOCALAPPDATA\Programs\FragSubs"
           if (-not (Test-Path "$app\FragSubs.exe")) { throw "FragSubs.exe was not installed" }
-          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\fragsubs-installed"
+          $env:FRAGSUBS_HOME = "$env:RUNNER_TEMP\fragsubs-installed"
           $p = Start-Process -FilePath "$app\FragSubs.exe" -ArgumentList "--self-test" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "The installed app failed its self-test" }
           $un = Start-Process -FilePath "$app\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru

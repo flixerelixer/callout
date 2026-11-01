@@ -6,7 +6,7 @@ def fresh_paths(monkeypatch, tmp_path):
     monkeypatch.delenv("FRAGSUBS_HOME", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from callout import paths
+    from fragsubs import paths
 
     return importlib.reload(paths)
 

@@ -1,4 +1,4 @@
-# PyInstaller build for Windows:  pyinstaller callout.spec --noconfirm
+# PyInstaller build for Windows:  pyinstaller fragsubs.spec --noconfirm
 # Produces dist/FragSubs/FragSubs.exe (a folder build; starts faster than one-file).
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules

@@ -2,8 +2,8 @@ import json
 
 import numpy as np
 
-from callout.audio import Downmixer
-from callout.config import Settings
+from fragsubs.audio import Downmixer
+from fragsubs.config import Settings
 
 
 def test_settings_roundtrip(tmp_path):

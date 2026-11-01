@@ -15,7 +15,7 @@ can be switched on. Everything runs on your own PC.
 
 ## Download
 
-1. Download **[FragSubs-Setup.exe](https://github.com/fgmrkt/callout/releases/latest/download/FragSubs-Setup.exe)**
+1. Download **[FragSubs-Setup.exe](https://github.com/fgmrkt/fragsubs/releases/latest/download/FragSubs-Setup.exe)**
    (always the newest version) and run it. It installs for your user only, so
    no admin rights are needed, and adds Start menu and desktop shortcuts.
 2. Windows may show a SmartScreen warning because the app is not code-signed.
@@ -26,7 +26,7 @@ repository for a newer release, downloads it, swaps its own files and
 restarts. Your settings and downloaded models are kept. To update by hand
 instead, turn off **About → Update automatically when FragSubs starts** and
 use **Check for updates**. A portable zip is also attached to every
-[release](https://github.com/fgmrkt/callout/releases).
+[release](https://github.com/fgmrkt/fragsubs/releases).
 
 FragSubs was called Callout before version 0.2.0. Existing copies update
 themselves into FragSubs and move their data folder over automatically.
@@ -126,14 +126,14 @@ python run.py
 ```
 
 Run the tests with `pip install -r requirements-dev.txt` and `python -m pytest`.
-Set `CALLOUT_DEBUG=1` to log every caption while testing.
+Set `FRAGSUBS_DEBUG=1` to log every caption while testing.
 
 ## Building and releasing
 
 GitHub Actions builds the Windows app on every push to `main` or a `ci/*`
 branch (see the **Actions** tab for a downloadable build). To publish an
 update, which every installed copy picks up on its next start, bump
-`__version__` in `callout/__init__.py` (for example to `0.2.1`) and push to
+`__version__` in `fragsubs/__init__.py` (for example to `0.2.1`) and push to
 `main`.
 
 When `main` has a version with no release yet, the workflow runs the tests,
@@ -148,7 +148,7 @@ publishes release `v0.2.1` with:
 - `Callout-v0.2.1-win64.zip`, for copies from before the rename
 
 To build locally: `pip install -r requirements-dev.txt` and
-`pyinstaller callout.spec --noconfirm`. The app ends up in `dist\FragSubs`.
+`pyinstaller fragsubs.spec --noconfirm`. The app ends up in `dist\FragSubs`.
 
 ## Website
 

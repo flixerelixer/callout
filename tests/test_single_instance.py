@@ -13,10 +13,10 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 def test_second_launch_finds_the_first_and_shows_it():
     from PySide6.QtCore import QCoreApplication
 
-    from callout.single_instance import SingleInstance
+    from fragsubs.single_instance import SingleInstance
 
     app = QCoreApplication.instance() or QCoreApplication([])
-    name = f"callout-test-{uuid.uuid4().hex[:8]}"
+    name = f"fragsubs-test-{uuid.uuid4().hex[:8]}"
     first = SingleInstance(name)
     assert not first.already_running()
     shown = []

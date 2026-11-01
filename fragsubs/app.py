@@ -21,12 +21,12 @@ def fix_std_streams() -> None:
 
 
 def _setup_logging() -> None:
-    level = logging.DEBUG if os.environ.get("CALLOUT_DEBUG") else logging.INFO
+    level = logging.DEBUG if (os.environ.get("FRAGSUBS_DEBUG") or os.environ.get("CALLOUT_DEBUG")) else logging.INFO
     root = logging.getLogger()
     root.setLevel(level)
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     fh = logging.handlers.RotatingFileHandler(
-        paths.logs_dir() / "callout.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+        paths.logs_dir() / "fragsubs.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
     )
     fh.setFormatter(fmt)
     root.addHandler(fh)
@@ -42,7 +42,7 @@ def _setup_logging() -> None:
 def self_test() -> int:
     """Used by CI on the packaged .exe: load every heavy dependency and run
     the voice detector once. Exit code 0 means the build is complete."""
-    log = logging.getLogger("callout.selftest")
+    log = logging.getLogger("fragsubs.selftest")
     try:
         import numpy as np
 
@@ -88,7 +88,7 @@ def main() -> int:
     os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     _setup_logging()
-    log = logging.getLogger("callout")
+    log = logging.getLogger("fragsubs")
     log.info("%s %s starting (Python %s)", APP_NAME, __version__, sys.version.split()[0])
 
     # Make NVIDIA DLLs findable before ctranslate2 is imported anywhere.

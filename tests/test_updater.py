@@ -3,7 +3,7 @@ import zipfile
 
 import pytest
 
-from callout import updater
+from fragsubs import updater
 
 
 @pytest.mark.parametrize("remote,local,expected", [
@@ -22,7 +22,7 @@ def test_is_newer(remote, local, expected):
 def release_json(**over):
     data = {
         "tag_name": "v0.2.0",
-        "html_url": "https://github.com/fgmrkt/callout/releases/tag/v0.2.0",
+        "html_url": "https://github.com/fgmrkt/fragsubs/releases/tag/v0.2.0",
         "draft": False,
         "prerelease": False,
         "assets": [
@@ -70,7 +70,7 @@ def make_zip(path):
 
 
 def test_download_and_unpack(tmp_path, monkeypatch):
-    monkeypatch.setenv("CALLOUT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("FRAGSUBS_HOME", str(tmp_path / "home"))
     zpath = tmp_path / "FragSubs-v0.2.0-win64.zip"
     size, sha = make_zip(zpath)
     rel = updater.Release("0.2.0", zpath.as_uri(), size, sha, "")
@@ -82,7 +82,7 @@ def test_download_and_unpack(tmp_path, monkeypatch):
 
 
 def test_download_rejects_bad_checksum(tmp_path, monkeypatch):
-    monkeypatch.setenv("CALLOUT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("FRAGSUBS_HOME", str(tmp_path / "home"))
     zpath = tmp_path / "FragSubs-v0.2.0-win64.zip"
     size, _ = make_zip(zpath)
     rel = updater.Release("0.2.0", zpath.as_uri(), size, "0" * 64, "")

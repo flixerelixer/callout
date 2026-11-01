@@ -1,6 +1,6 @@
 import sys
 
-from callout.app import fix_std_streams
+from fragsubs.app import fix_std_streams
 
 
 def test_progress_bars_survive_without_console(monkeypatch):

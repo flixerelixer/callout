@@ -1,6 +1,6 @@
 import pytest
 
-from callout.translit import to_latin
+from fragsubs.translit import to_latin
 
 
 @pytest.mark.parametrize("text,lang,expected", [

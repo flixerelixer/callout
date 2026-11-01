@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from callout.config import Settings
-from callout.engine import Caption, Skipped, Translator
+from fragsubs.config import Settings
+from fragsubs.engine import Caption, Skipped, Translator
 
 
 class FakeModel:

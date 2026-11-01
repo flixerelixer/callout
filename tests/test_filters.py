@@ -1,4 +1,4 @@
-from callout.filters import (
+from fragsubs.filters import (
     choose_language,
     clean_text,
     is_hallucination,

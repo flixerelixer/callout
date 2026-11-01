@@ -50,8 +50,8 @@ class Pipeline:
     def start(self) -> None:
         self._stop.clear()
         self._threads = [
-            threading.Thread(target=self._run_capture, name="callout-capture", daemon=True),
-            threading.Thread(target=self._run_inference, name="callout-whisper", daemon=True),
+            threading.Thread(target=self._run_capture, name="fragsubs-capture", daemon=True),
+            threading.Thread(target=self._run_inference, name="fragsubs-whisper", daemon=True),
         ]
         for t in self._threads:
             t.start()
