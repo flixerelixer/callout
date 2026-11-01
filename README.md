@@ -16,9 +16,15 @@ languages can be switched on. Everything runs on your own PC.
 
 1. Go to [Releases](https://github.com/fgmrkt/callout/releases) and download
    `Callout-vX.Y.Z-win64.zip`.
-2. Unzip it anywhere and run `Callout.exe`.
+2. Unzip it to a folder you own (for example Documents) and run `Callout.exe`.
 3. Windows may show a SmartScreen warning because the app is not code-signed.
    Click **More info**, then **Run anyway**.
+
+You only download Callout once. Every time it starts, it checks this
+repository for a newer release, downloads it, swaps its own files and
+restarts. Your settings and downloaded models are kept. To update by hand
+instead, turn off **About → Update automatically when Callout starts** and use
+**Check for updates**.
 
 ## First start
 
@@ -69,7 +75,8 @@ cs2.exe audio ──► voice detector ──► Whisper ───────�
 ## Privacy and anti-cheat
 
 - Audio never leaves your computer, and nothing you hear is saved to disk.
-  The log file only contains technical messages.
+  The log file only contains technical messages. The only network traffic is
+  the one-time downloads above and the update check against GitHub.
 - Callout is a separate program. It only reads the sound the game plays; it
   never touches the game's memory or files and doesn't inject anything, so it
   is safe with VAC.
@@ -111,15 +118,20 @@ Set `CALLOUT_DEBUG=1` to log every caption while testing.
 ## Building and releasing
 
 GitHub Actions builds the Windows app on every push (see the **Actions** tab
-for a downloadable zip). To publish a release:
+for a downloadable zip). To publish a release, which every installed copy
+then picks up on its next start:
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+1. Bump `__version__` in `callout/__init__.py` (for example to `0.1.2`) and commit.
+2. Tag and push:
 
-The workflow runs the tests, builds `Callout.exe` with PyInstaller, checks the
-build with `Callout.exe --self-test`, and attaches the zip to a new release.
+   ```bash
+   git tag v0.1.2
+   git push origin main v0.1.2
+   ```
+
+The workflow checks the tag matches `__version__`, runs the tests, builds
+`Callout.exe` with PyInstaller, checks the build with `--self-test`, tests the
+self-updater, and attaches the zip to a new release.
 
 To build locally: `pip install -r requirements-dev.txt` and
 `pyinstaller callout.spec --noconfirm`. The app ends up in `dist\Callout`.

@@ -26,6 +26,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
+      - name: Check the tag matches the app version
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $v = python -c "import callout; print(callout.__version__)"
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} doesn't match version $v in callout/__init__.py" }
+
       - name: Unit tests
         run: python -m pytest -q
 
@@ -39,6 +46,23 @@ jobs:
           $p = Start-Process -FilePath "dist\Callout\Callout.exe" -ArgumentList "--self-test" -Wait -PassThru
           Get-Content "$env:CALLOUT_HOME\logs\callout.log" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
+
+      - name: Test the self-updater script
+        shell: pwsh
+        run: |
+          $t = "$env:RUNNER_TEMP\updtest"
+          New-Item -ItemType Directory -Force $t | Out-Null
+          Copy-Item dist\Callout "$t\install" -Recurse
+          New-Item -ItemType Directory -Force "$t\new" | Out-Null
+          Copy-Item dist\Callout "$t\new\Callout" -Recurse
+          "new version" | Out-File "$t\new\Callout\_internal\marker.txt"
+          python -c "import sys; from callout.updater import UPDATE_SCRIPT; open(sys.argv[1], 'w', encoding='utf-8').write(UPDATE_SCRIPT)" "$t\apply.ps1"
+          $app = Start-Process -FilePath powershell -ArgumentList "-NoProfile","-Command","Start-Sleep 3" -WindowStyle Hidden -PassThru
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$t\apply.ps1" -AppPid $app.Id -Install "$t\install" -New "$t\new\Callout" -Log "$t\update.log" -NoRestart
+          Get-Content "$t\update.log"
+          if (-not (Test-Path "$t\install\_internal\marker.txt")) { throw "The update was not applied" }
+          if (Test-Path "$t\install\_internal.old") { throw "The backup was not cleaned up" }
+          if (-not (Test-Path "$t\install\Callout.exe")) { throw "Callout.exe is missing after the update" }
 
       - name: Zip
         id: zip

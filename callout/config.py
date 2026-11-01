@@ -56,6 +56,8 @@ class Settings:
     # --- app ----------------------------------------------------------------
     start_listening_on_launch: bool = False
     minimize_to_tray: bool = True
+    auto_update: bool = True
+    last_version: str = ""  # used to say "Callout was updated" once
 
     def enabled_languages(self) -> set[str]:
         return {code for code in self.languages if code in languages.BY_CODE}

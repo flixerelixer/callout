@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths
+from .. import APP_NAME, REPO_URL, __version__, audio, gpu_runtime, languages, models, paths, updater
 from ..config import DEFAULT_HINT, Settings
 from ..engine import Caption
 from ..pipeline import Callbacks, Pipeline
@@ -54,6 +54,8 @@ class Bridge(QObject):
 
 
 def _gb(n: int) -> str:
+    if n < 1e9:
+        return f"{n / 1e6:.0f} MB"
     return f"{n / 1e9:.1f} GB"
 
 
@@ -72,6 +74,8 @@ class MainWindow(QMainWindow):
         self._gpu_count: int | None = None
         self._gpu_name = ""
         self._tray_hint_shown = False
+        self._update_thread: threading.Thread | None = None
+        self._update_release: updater.Release | None = None
 
         self.bridge = Bridge()
         self.bridge.status.connect(self._on_status)
@@ -94,6 +98,8 @@ class MainWindow(QMainWindow):
         self._build()
         self.overlay.moved.connect(self._on_overlay_moved)
         QTimer.singleShot(0, self._probe_gpu)
+        QTimer.singleShot(0, self._announce_update)
+        QTimer.singleShot(1500, lambda: self.check_updates(manual=False))
 
     # ================================================================== layout
     def _build(self) -> None:
@@ -102,8 +108,9 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        header = QWidget()
-        header.setStyleSheet(f"background: {theme.BASE};")
+        header = QWidget(objectName="header")
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header.setStyleSheet(f"QWidget#header {{ background: {theme.BASE}; }}")
         h = QHBoxLayout(header)
         h.setContentsMargins(20, 14, 20, 14)
         h.setSpacing(14)
@@ -122,7 +129,10 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.meter)
 
         # Download progress / error strip (hidden unless needed)
-        self.notice = QWidget()
+        self.notice = QWidget(objectName="notice")
+        self.notice.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.notice.setStyleSheet(
+            f"QWidget#notice {{ background: {theme.PANEL}; border-bottom: 1px solid {theme.LINE}; }}")
         n = QHBoxLayout(self.notice)
         n.setContentsMargins(20, 8, 20, 8)
         self.notice_label = QLabel()
@@ -135,6 +145,12 @@ class MainWindow(QMainWindow):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self._cancel.set)
         n.addWidget(self.cancel_btn)
+        self.notice_action = QPushButton()
+        self.notice_action.setObjectName("primary")
+        self.notice_action.hide()
+        self.notice_action.clicked.connect(self._on_notice_action)
+        n.addWidget(self.notice_action)
+        self._notice_callback = None
         self.notice.hide()
         outer.addWidget(self.notice)
 
@@ -383,12 +399,19 @@ class MainWindow(QMainWindow):
         self._section(lay, "Privacy")
         lay.addWidget(self._note(
             "Audio never leaves your computer and nothing you hear is saved. The only downloads are "
-            "the speech model (from Hugging Face) and, for NVIDIA GPUs, NVIDIA's libraries (from PyPI)."))
+            "the speech model (from Hugging Face), NVIDIA's libraries for NVIDIA GPUs (from PyPI) and "
+            "Callout updates (from GitHub)."))
         self._section(lay, "Good to know")
         lay.addWidget(self._note(
             "Callout cannot tell teammates apart in in-game voice chat, because the game mixes them "
             "into one sound. Translations arrive about a second after someone stops talking. Loud "
             "gunfights and heavy slang lower the accuracy."))
+        self._section(lay, "Updates")
+        self._check(lay, "Update automatically when Callout starts", "auto_update")
+        upd = QPushButton("Check for updates")
+        upd.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+        upd.clicked.connect(lambda: self.check_updates(manual=True))
+        lay.addWidget(upd)
         self._section(lay, "Settings")
         self._check(lay, "Keep running in the system tray when this window is closed", "minimize_to_tray")
         self._check(lay, "Start listening when Callout opens", "start_listening_on_launch")
@@ -650,14 +673,26 @@ class MainWindow(QMainWindow):
     # ================================================================== callbacks
     def _show_notice(self, text: str, busy: bool = False, error: bool = False) -> None:
         color = theme.DANGER if error else theme.TEXT
-        self.notice.setStyleSheet(f"background: {theme.PANEL}; border-bottom: 1px solid {theme.LINE};")
         self.notice_label.setStyleSheet(f"color: {color};")
         self.notice_label.setText(text)
         self.progress.setVisible(busy)
-        self.cancel_btn.setVisible(busy and self._task is not None)
+        self.cancel_btn.setVisible(busy and (self._task is not None or self._update_thread is not None))
         if busy:
             self.progress.setRange(0, 0)
+        self.notice_action.hide()
+        self._notice_callback = None
         self.notice.show()
+
+    def _show_notice_action(self, text: str, button: str, callback) -> None:
+        self._show_notice(text)
+        self.notice_action.setText(button)
+        self.notice_action.show()
+        self._notice_callback = callback
+
+    def _on_notice_action(self) -> None:
+        callback = self._notice_callback
+        if callback:
+            callback()
 
     def _on_status(self, text: str) -> None:
         if self._running:
@@ -709,6 +744,9 @@ class MainWindow(QMainWindow):
             self._gpu_count, self._gpu_name = result
             self._refresh_gpu_note()
             return
+        if name.startswith("update_"):
+            self._on_update_result(name, result)
+            return
         if name == "gpu_download":
             self._task = None
             self.cancel_btn.hide()
@@ -721,6 +759,103 @@ class MainWindow(QMainWindow):
                 if result == "start":
                     self.start_listening()
             self._refresh_gpu_note()
+
+    # ================================================================== updates
+    def _announce_update(self) -> None:
+        last = self.settings.last_version
+        if last and updater.is_newer(__version__, last):
+            self._show_notice(f"Callout was updated to {__version__}.")
+            QTimer.singleShot(8000, lambda: self.notice.hide() if "updated to" in self.notice_label.text() else None)
+        if last != __version__:
+            self.settings.last_version = __version__
+            self._save_timer.start()
+
+    def check_updates(self, manual: bool) -> None:
+        if self._update_thread is not None:
+            return
+        if not manual and not self.settings.auto_update:
+            return
+
+        def work() -> None:
+            try:
+                self.bridge.task_done.emit("update_check", (manual, updater.check()))
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Update check failed: %s", exc)
+                self.bridge.task_done.emit("update_check", (manual, exc))
+
+        self._update_thread = threading.Thread(target=work, daemon=True)
+        self._update_thread.start()
+        if manual:
+            self._show_notice("Checking for updates…", busy=True)
+
+    def _install_update(self) -> None:
+        release = self._update_release
+        if release is None or self._update_thread is not None:
+            return
+        ok, why = updater.can_self_update()
+        if not ok:
+            self._show_notice_action(f"{why} You can download {release.version} yourself.", "Open download page",
+                                     lambda: QDesktopServices.openUrl(QUrl(release.page)))
+            return
+        self._cancel.clear()
+
+        def work() -> None:
+            try:
+                new_dir = updater.download(
+                    release, lambda done, total: self.bridge.progress.emit(
+                        f"Downloading Callout {release.version}", done, total), self._cancel)
+                self.bridge.task_done.emit("update_ready", new_dir)
+            except updater.Cancelled:
+                self.bridge.task_done.emit("update_ready", "cancelled")
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Update download failed")
+                self.bridge.task_done.emit("update_ready", exc)
+
+        self._update_thread = threading.Thread(target=work, daemon=True)
+        self._update_thread.start()
+        self._show_notice(f"Downloading Callout {release.version}…", busy=True)
+
+    def _on_update_result(self, name: str, result) -> None:
+        self._update_thread = None
+        self.cancel_btn.hide()
+        if name == "update_check":
+            manual, outcome = result
+            if isinstance(outcome, Exception):
+                if manual:
+                    self._show_notice(f"Couldn't check for updates: {outcome}", error=True)
+                return
+            if outcome is None:
+                if manual:
+                    self._show_notice(f"You have the latest version ({__version__}).")
+                return
+            self._update_release = outcome
+            ok, _ = updater.can_self_update()
+            if not manual and ok and not self._running and self._task is None:
+                self._install_update()
+            else:
+                self._show_notice_action(f"Callout {outcome.version} is available (you have {__version__}).",
+                                         "Update now", self._install_update)
+                if hasattr(self, "notify") and not manual and not self.isVisible():
+                    self.notify(f"Callout {outcome.version} is available.")
+            return
+        if name == "update_ready":
+            if result == "cancelled":
+                self.notice.hide()
+                return
+            if isinstance(result, Exception):
+                self._show_notice_action(f"The update failed: {result}", "Try again", self._install_update)
+                return
+            self._show_notice("Restarting to finish the update…", busy=True)
+            QApplication.processEvents()
+            try:
+                updater.launch_installer(result)
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Could not start the updater")
+                self._show_notice(f"Couldn't start the updater: {exc}", error=True)
+                return
+            self.quitting = True
+            self.shutdown()
+            QApplication.instance().quit()
 
     # ================================================================== window
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
