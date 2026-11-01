@@ -28,6 +28,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      # Browsers keep style.css and app.js for a while. Give each a version
+      # that changes with its content, so a new page never gets old styles.
+      - name: Version the CSS and JS links
+        run: |
+          for f in style.css app.js; do
+            v=$(sha256sum "site/$f" | cut -c1-10)
+            sed -i "s|\"$f\"|\"$f?v=$v\"|g" site/index.html
+          done
+          grep -c '?v=' site/index.html | grep -qx 2
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
