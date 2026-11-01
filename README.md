@@ -126,20 +126,14 @@ Set `CALLOUT_DEBUG=1` to log every caption while testing.
 ## Building and releasing
 
 GitHub Actions builds the Windows app on every push (see the **Actions** tab
-for a downloadable zip). To publish a release, which every installed copy
-then picks up on its next start:
+for a downloadable zip). To publish an update, which every installed copy
+picks up on its next start, bump `__version__` in `callout/__init__.py` (for
+example to `0.1.2`) and push to `main`.
 
-1. Bump `__version__` in `callout/__init__.py` (for example to `0.1.2`) and commit.
-2. Tag and push:
-
-   ```bash
-   git tag v0.1.2
-   git push origin main v0.1.2
-   ```
-
-The workflow checks the tag matches `__version__`, runs the tests, builds
-`Callout.exe` with PyInstaller, checks the build with `--self-test`, tests the
-self-updater, and attaches the zip to a new release.
+When `main` has a version with no release yet, the workflow runs the tests,
+builds `Callout.exe` with PyInstaller, checks the build with `--self-test`,
+tests the self-updater, and publishes release `v0.1.2` with the zip attached.
+Pushing a `v*` tag that matches `__version__` works too.
 
 To build locally: `pip install -r requirements-dev.txt` and
 `pyinstaller callout.spec --noconfirm`. The app ends up in `dist\Callout`.
