@@ -33,6 +33,8 @@ def _user() -> str:
     return "".join(ch for ch in user if ch.isalnum()) or "user"
 
 
+# These names are fixed identifiers shared by every version, not links: if
+# they changed, an older copy and a newer one could run side by side.
 def _name() -> str:
     return f"fgmrkt.fragsubs.{_user()}"
 

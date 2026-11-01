@@ -98,7 +98,7 @@
   // Latest version and download size, straight from the GitHub release.
   const info = document.getElementById("release-info");
   if (info && window.fetch) {
-    fetch("https://api.github.com/repos/fgmrkt/fragsubs/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+    fetch("https://api.github.com/repos/flixerelixer/callout/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((rel) => {
         if (!rel || !rel.tag_name) return;

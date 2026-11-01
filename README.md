@@ -15,7 +15,7 @@ can be switched on. Everything runs on your own PC.
 
 ## Download
 
-1. Download **[FragSubs-Setup.exe](https://github.com/fgmrkt/fragsubs/releases/latest/download/FragSubs-Setup.exe)**
+1. Download **[FragSubs-Setup.exe](https://github.com/flixerelixer/callout/releases/latest/download/FragSubs-Setup.exe)**
    (always the newest version) and run it. It installs for your user only, so
    no admin rights are needed, and adds Start menu and desktop shortcuts.
 2. Windows may show a SmartScreen warning because the app is not code-signed.
@@ -26,7 +26,7 @@ repository for a newer release, downloads it, swaps its own files and
 restarts. Your settings and downloaded models are kept. To update by hand
 instead, turn off **About → Update automatically when FragSubs starts** and
 use **Check for updates**. A portable zip is also attached to every
-[release](https://github.com/fgmrkt/fragsubs/releases).
+[release](https://github.com/flixerelixer/callout/releases).
 
 FragSubs was called Callout before version 0.2.0. Existing copies update
 themselves into FragSubs and move their data folder over automatically.

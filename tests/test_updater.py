@@ -22,7 +22,7 @@ def test_is_newer(remote, local, expected):
 def release_json(**over):
     data = {
         "tag_name": "v0.2.0",
-        "html_url": "https://github.com/fgmrkt/fragsubs/releases/tag/v0.2.0",
+        "html_url": "https://github.com/flixerelixer/callout/releases/tag/v0.2.0",
         "draft": False,
         "prerelease": False,
         "assets": [
