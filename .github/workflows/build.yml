@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Build the app
+        run: pyinstaller callout.spec --noconfirm
+
+      - name: Smoke-test the packaged app
+        shell: pwsh
+        run: |
+          $env:CALLOUT_HOME = "$env:RUNNER_TEMP\callout-home"
+          $p = Start-Process -FilePath "dist\Callout\Callout.exe" -ArgumentList "--self-test" -Wait -PassThru
+          Get-Content "$env:CALLOUT_HOME\logs\callout.log" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "Self-test failed with exit code $($p.ExitCode)" }
+
+      - name: Zip
+        id: zip
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.ref_type }}" -eq "tag") { "${{ github.ref_name }}" } else { "dev-$("${{ github.sha }}".Substring(0,7))" }
+          $name = "Callout-$version-win64.zip"
+          Compress-Archive -Path dist\Callout -DestinationPath $name
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Callout-win64
+          path: ${{ steps.zip.outputs.name }}
+
+      - name: Publish release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.zip.outputs.name }}
+          generate_release_notes: true

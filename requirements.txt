@@ -1,0 +1,13 @@
+# Runtime dependencies (Windows 10/11, Python 3.12).
+faster-whisper==1.2.1
+ctranslate2==4.8.4
+huggingface_hub==2.4.0
+# faster-whisper 1.2.1 passes an argument PyAV 19 removed; 18.x works.
+av==18.1.0
+onnxruntime==1.31.1
+numpy>=2.0,<3
+soxr==1.1.0
+psutil==7.2.2
+PySide6-Essentials==6.12.0
+proc-tap==1.1.1; sys_platform == "win32"
+PyAudioWPatch==0.2.12.9; sys_platform == "win32"

@@ -1,0 +1,86 @@
+import numpy as np
+import pytest
+
+from callout.vad import FRAME, SAMPLE_RATE, Segmenter, SegmenterConfig
+
+
+def stub_from_mask(mask):
+    """Probability function that replays a per-frame speech mask."""
+    it = iter(mask)
+
+    def fn(frames):
+        return np.array([next(it, 0.0) for _ in range(len(frames))], dtype=np.float32)
+
+    return fn
+
+
+def frames_for(seconds):
+    return round(seconds * SAMPLE_RATE / FRAME)
+
+
+def run(mask, cfg=None, chunk=480):
+    seg = Segmenter(stub_from_mask(mask), cfg or SegmenterConfig())
+    audio = np.random.default_rng(0).normal(0, 0.01, len(mask) * FRAME).astype(np.float32)
+    out = []
+    for i in range(0, len(audio), chunk):
+        out += seg.feed(audio[i:i + chunk])
+    return out, seg
+
+
+def test_one_sentence_is_one_segment():
+    mask = [0.0] * frames_for(1) + [0.9] * frames_for(2) + [0.0] * frames_for(1)
+    out, _ = run(mask)
+    assert len(out) == 1
+    dur = len(out[0]) / SAMPLE_RATE
+    # 2 s of speech + pre-roll + tail pad, minus nothing
+    assert 2.0 <= dur <= 2.7
+
+
+def test_short_blip_is_ignored():
+    mask = [0.0] * 20 + [0.9] * 5 + [0.0] * 40  # 160 ms "speech", e.g. a gunshot
+    out, _ = run(mask)
+    assert out == []
+
+
+def test_brief_dip_does_not_split_sentence():
+    mask = [0.0] * 10 + [0.9] * 30 + [0.2] * 8 + [0.9] * 30 + [0.0] * 40
+    out, _ = run(mask)
+    assert len(out) == 1
+
+
+def test_long_monologue_is_cut():
+    cfg = SegmenterConfig(max_segment_s=3.0)
+    mask = [0.9] * frames_for(7) + [0.0] * 40
+    out, _ = run(mask, cfg)
+    assert len(out) >= 2
+    assert all(len(s) / SAMPLE_RATE <= 3.1 for s in out)
+
+
+def test_flush_returns_unfinished_speech():
+    mask = [0.9] * frames_for(1)
+    out, seg = run(mask)
+    assert out == []
+    rest = seg.flush()
+    assert rest is not None and len(rest) >= SAMPLE_RATE * 0.9
+
+
+def test_streaming_silero_matches_batch():
+    pytest.importorskip("onnxruntime")
+    from faster_whisper.vad import get_vad_model
+
+    from callout.vad import SileroVAD
+
+    rng = np.random.default_rng(1)
+    t = np.arange(SAMPLE_RATE * 3) / SAMPLE_RATE
+    # Something speech-ish: modulated harmonics plus noise.
+    audio = (0.2 * np.sin(2 * np.pi * 180 * t) * (1 + np.sin(2 * np.pi * 4 * t))
+             + 0.02 * rng.normal(size=t.size)).astype(np.float32)
+    n = len(audio) // FRAME
+    ref = get_vad_model()(audio[: n * FRAME]).reshape(-1)[:n]
+    vad = SileroVAD()
+    got, pos = [], 0
+    while pos < n:
+        k = min(int(rng.integers(1, 6)), n - pos)
+        got.append(vad(audio[pos * FRAME:(pos + k) * FRAME].reshape(k, FRAME)))
+        pos += k
+    assert np.allclose(np.concatenate(got), ref, atol=1e-5)
